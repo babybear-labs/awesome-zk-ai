@@ -6,8 +6,8 @@ lede: >-
   Commit the execution trace, open a random sample of it. This is the only alternative
   with a knob: you can dial the soundness error. Which makes it the most interesting one,
   and also the one whose security argument is not a cryptographic argument at all.
-papers: [lightweight-sampling-inference, proof-of-sampling, veriml, zkmlaas, safetynets]
-status: draft
+papers: [lightweight-sampling-inference, proof-of-sampling, veriml, zkmlaas]
+status: reviewed
 ---
 
 Sampling sits *between* full zkML and the no-proof alternatives, and it is easy to
@@ -24,10 +24,11 @@ it — the headline claim, recorded in `papers.yml`, is a move from the order of
 the order of *milliseconds*.
 
 The line has ancestry inside this SoK already. [[veriml]] pre-commits to training
-iterations and lets the verifier challenge a random subset. [[zkmlaas]] proves a random
-subset of epochs. [[proof-of-sampling]] does not commit at all — it re-executes randomly
-under a Nash-equilibrium incentive, making it the cheapest and weakest scheme catalogued
-here. What is new is applying trace-sampling to *inference*, where the trace is enormous
+iterations and lets the verifier challenge a random subset. [[zkmlaas]] commits to the
+intermediate updates and proves only the subset the verifier randomly challenges.
+[[proof-of-sampling]] does not commit at all — it re-executes randomly under a
+Nash-equilibrium incentive, making it the cheapest and weakest of the sampling family.
+What is new is applying trace-sampling to *inference*, where the trace is enormous
 and the query volume is high.
 
 ## The knob, and the arithmetic behind it
@@ -122,13 +123,23 @@ comparison axis is $\text{cost} \times (\text{detection probability} \times
 error, and this SoK does not do it.
 :::
 
-:::gap  The detection probability is never stated as a function of the sample rate
-This is the striking omission, given that it is the one thing the scheme has that nothing
-else does. The paper gives adversarial evaluation results — attacks tried, attacks failed
-— but not a curve of soundness error against number of opened paths, and not a lower bound
-on $\varepsilon$ for a class of cheats. Without those two, the "tunable guarantee" cannot
-actually be tuned by a deployer, because they have no way to convert a chosen $k$ into a
-statement about risk. Producing that curve is the highest-value follow-up on this page.
+The paper does supply a formal soundness statement — it bounds other-model soundness by the
+sum of a trace-separation error and a testing error, and gives algorithms for estimating
+both empirically. What it does not do is turn the number of opened paths into a soundness
+curve, and it says so itself:
+
+:::quote{src="Lightweight Sampling Proofs of Inference" sec="§5.2, Security"}
+Understanding the precise tradeoffs between the number of sampled paths, proof size, and
+the resulting soundness guarantees is an important direction for future work.
+:::
+
+:::gap  The soundness-vs-sample-rate tradeoff is left to future work
+The paper also notes that any single-path strategy has detection probability capped at
+$1/N$ for maximum layer width $N$, and that full soundness — where the adversary is free to
+construct the trace arbitrarily — remains open. Until the curve exists, the "tunable
+guarantee" cannot actually be tuned by a deployer, because they have no way to convert a
+chosen $k$ into a statement about risk. Producing that curve is the highest-value follow-up
+on this page.
 :::
 
 ---

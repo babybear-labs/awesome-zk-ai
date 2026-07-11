@@ -19,11 +19,14 @@ a single instruction, which a referee can then execute directly.
 [[opml]] is the reference point, and it is the strongest argument against zkML as a
 default. Because it never generates a proof unless challenged, the honest path costs
 approximately what running the model costs. It runs a 7B-parameter LLaMA on a standard PC
-with no GPU. There is no zkML system in this SoK within three orders of magnitude of that.
+with no GPU. Its own argument is that zkML carries ">1000x" overhead against plain
+computation — but that is opML's claim about zkML, not a measurement in this SoK:
+`papers.yml` records no plain-execution baseline for any system, so the ratio cannot be
+computed from our data.
 
 ## What the security assumption actually is
 
-The papers call it *AnyTrust*: **any single honest validator can force correct behaviour.**
+[[opml]] calls it *AnyTrust*: **any single honest validator can force correct behaviour.**
 That phrasing is accurate and it is also doing a lot of compression. Unpacked, an
 optimistic system is safe only if all of the following hold:
 
@@ -53,8 +56,9 @@ Every optimistic system's safety collapses to a **liveness assumption on the cha
 transaction**. If an adversary can keep the challenge out of the chain until the window
 closes — by congestion, by bribing a sequencer, by being the sequencer — the fraudulent
 output finalises and the honest challenger's correctness was irrelevant. This is a known
-problem in optimistic rollups generally, and no ML-specific paper in this SoK analyses it
-in the ML setting, where the challenge is far more expensive to produce than a rollup's.
+problem in optimistic rollups generally. We have not found an ML-specific treatment of it
+— the optimistic papers here are indexed at abstract level only — and in the ML setting
+the challenge is far more expensive to produce than a rollup's.
 :::
 
 ## What it costs you, stated plainly
@@ -62,8 +66,8 @@ in the ML setting, where the challenge is far more expensive to produce than a r
 **Latency to finality.** The output is not trustworthy until the window closes. For an
 on-chain settlement that is a delay measured in whatever the window is; for an
 interactive user-facing product it is fatal. [[optimistic-tee-rollups]] exists largely to
-paper over exactly this, offering sub-second *provisional* finality backed by hardware
-and deferring the real guarantee to the fraud-proof path.
+paper over exactly this, offering what it calls "sub-second" *provisional* finality backed
+by hardware, and deferring the real guarantee to the fraud-proof path.
 
 **Verifiability only for the watchers.** A ZK proof convinces a party who shows up two
 years later with no context. An unchallenged optimistic claim convinces you only if you
@@ -89,8 +93,9 @@ answerable question: it needs one proving-time curve and one challenge-window co
 The claim "for large enough models, opML finalises before zkML proves" appears in the
 optimistic literature as an argument. It has never been plotted. Doing so would need a
 proving-time-vs-parameters curve (which [the inference section](/zk-inference/) has the
-data for, with caveats) against a stated challenge window (which the optimistic papers
-give). Nobody has drawn the two lines on the same axes.
+data for, with caveats) against a stated challenge window — which none of the optimistic
+entries in `papers.yml` currently records, and that missing constant is itself part of the
+gap. Nobody has drawn the two lines on the same axes.
 :::
 
 ## The hybrids
@@ -100,12 +105,12 @@ Two systems here refuse the binary, and both are more interesting than either pu
 [[opp-ai]] splits **by privacy need**: prove the privacy-sensitive submodel in ZK, run the
 rest optimistically. This is a direct response to assumption 3 above — it carves out the
 part of the model that cannot be exposed to a challenger and pays ZK's price only there.
-Whether the split leaks anything about the boundary between the two halves is not
-something the paper addresses.
+Whether the split leaks anything about the boundary between the two halves is the question
+to ask of it — and we do not hold the paper, so we cannot say whether it answers it.
 
 [[zk-opml]] splits **by operator**: decompose inference to the ONNX operator level, verify
 optimistically, and generate ZK proofs only for isolated operators where they are needed.
-This is the same instinct as [the operator atlas](/zk-inference/) — that not all operators
+This is the same instinct as [the operator atlas](../zk-inference/operators/index.html) — that not all operators
 are equally hard or equally dangerous — applied to trust rather than to cost.
 
 [[optimistic-tee-rollups]] splits **by role**: hardware for throughput, fraud proofs for
@@ -119,7 +124,8 @@ One historical note worth keeping. [[safetynets]] — the 2017 ancestor of the e
 sum-check zkML lineage — is *itself interactive*: the verifier sends live challenges and
 the prover responds. In a sense the whole field started somewhere between these two
 worlds, and both branches are attempts to remove the interaction: ZK by compiling the
-verifier away with Fiat–Shamir (which is what the Fiat–Shamir
-result attacks), and optimistic systems by making the interaction
-rare rather than removing it. The optimistic branch never took on that attack surface,
+verifier away with Fiat–Shamir (which is what
+[the Fiat–Shamir/GKR attack](/zk-inference/proof-systems/) attacks), and optimistic systems
+by making the interaction rare rather than removing it. The optimistic branch never took on
+that attack surface,
 because it never took that step.

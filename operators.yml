@@ -88,6 +88,20 @@ scheme_meta:
     blurb: Halo2 + ONNX. Circuit-based arithmetic constraints, so non-linear ops are expensive; its lookup
       tables cannot be materialised for large ranges. Jolt Atlas benchmarks 17× faster proving on nanoGPT,
       before EZKL's >400 s of key generation.
+  bionetta:
+    name: Bionetta
+    venue: Rarimo / Distributed Lab, Dec 2025
+    indexed: false
+    spine: R1CS (Circom) · UltraGroth (Groth16 + in-circuit lookup rounds) · BN254 · per-circuit setup
+    system: Weights are compiled into the R1CS as CONSTANTS, not signals, so every linear layer costs
+      zero constraints and proving cost is a pure function of the non-linearity count. Rescaling ("precision
+      cut") is a right shift fused into the bit decomposition ReLU already pays for, so the seam is free.
+    blurb: 'Deliberately NOT indexed against the operator matrix, and the reason is the point: Bionetta
+      cannot evaluate a single operator on this page. No softmax, no attention, no LayerNorm — its
+      supported non-linearities are exactly the ReLU family, because those are the ones whose cost the
+      sign-bit decomposition already buys. It is a CNN prover for a public model and a private input,
+      running client-side on a phone. Listed here so that its absence from the matrix is a statement
+      rather than an oversight.'
   mystique:
     name: Mystique
     venue: USENIX Security 2021

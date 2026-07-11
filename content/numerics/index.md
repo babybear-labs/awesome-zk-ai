@@ -8,7 +8,7 @@ lede: >-
   disagreement. The cost of the answer is not in the matmuls — it is at the seams between them,
   where a wide accumulator must be squeezed back down. That squeeze is a division, and neither
   a field nor a secret share can divide.
-papers: [deepprove, zkgpt, zkllm, zkpytorch, jolt-atlas, safetynets, zip, mystique, hao-et-al, zkcnn, garg-fp, zklp, archer-ieee, secfloat, prob-truncation, range-arithmetic, modulus-cost-of-intelligence]
+papers: [deepprove, zkgpt, zkllm, zkpytorch, zktorch, jolt-atlas, safetynets, zip, hao-et-al, zkcnn, zkml-kang, zkpot-garg, garg-fp, zklp, archer-ieee, secfloat, prob-truncation, range-arithmetic, modulus-cost-of-intelligence, bionetta]
 status: draft
 ---
 
@@ -200,7 +200,7 @@ backwards. They are not primarily a trick for evaluating non-linearities. They a
 do the *range checks*, and range checks are what rounding costs. Non-linearities were the visible
 beneficiary; the rescale seam is where the tonnage was.
 
-and then states the cost model that governs this entire field:
+[[zkgpt]] then states the cost model that governs this entire field:
 
 :::quote{src="zkGPT" sec="§5.1, Constraint level optimization"}
 rounding introduces range relations to prove, which are more computationally expensive than
@@ -252,14 +252,23 @@ $C_1/C_2 \approx S_xS_y/S_z$, and never writes that inequality out. The mechanis
 same one; but if you want the fully explicit version, it is stated for division, not for the
 rescale.
 
-:::debate  Does zkGPT restrict scales to powers of two?
-[[deepprove]] says its own scale factors, "unlike zkGPT/zkTorch, are *not* restricted to powers
-of two" — a claim repeated in our own [quantization](./quantization/) page. zkGPT's text does not
-support it. As quoted above, zkGPT searches $[1, 2^Q]$ for the *nearest fraction* $C_1/C_2$ to the
-true float ratio: an arbitrary rational, not a power of two. Both systems support arbitrary float
-scales; they differ in **mechanism**, not in generality — DeepProve puts the arbitrary part in the
-*multiplier* and keeps a power-of-two *divisor*; zkGPT keeps both arbitrary and pays with an
-inequality instead of a division. Recorded as `conflict_flag` on `deepprove` in `papers.yml`.
+:::debate  Who actually restricts scales to powers of two? Not zkGPT.
+[[deepprove]] does make a powers-of-two complaint, and makes it twice — but never against
+[[zkgpt]]. Of [[zktorch]] it says the "use of scaling factors is limited to powers-of-2, which
+incurs greater precision loss than the flexible quantization approach adopted in DeepProve", and
+of [[zkllm]] it says that protocol "only uses scaling factors of the form $2^k$ with $k \in
+\mathbb{Z}$ where as we allow for $k \in \mathbb{R}$". Its objection to zkGPT is a different one
+altogether: that "using a fixed scaling factor without clamping" can push intermediate values past
+what the lookup table can hold, "thus forcing a larger lookup table to commit."
+
+So the powers-of-two conflict recorded against zkGPT — in our `papers.yml` `conflict_flag`, and
+repeated on our own [quantization](./quantization/) page — is **ours, not DeepProve's**, and zkGPT's
+own text does not support it either. As quoted above, zkGPT searches $[1, 2^Q]$ for the *nearest
+fraction* $C_1/C_2$ to the true float ratio: an arbitrary rational, not a power of two. DeepProve
+and zkGPT both admit arbitrary float scales; they differ in **mechanism**, not in generality —
+DeepProve puts the arbitrary part in the *multiplier* and keeps a power-of-two *divisor*; zkGPT
+keeps both arbitrary and pays with an inequality instead of a division. The real powers-of-two
+restriction is zkTorch's and zkLLM's, and DeepProve is right about it.
 :::
 
 ### Since rounding is the cost, round less often
@@ -268,7 +277,7 @@ If range checks dominate, the optimization writes itself. Three papers found it 
 gave it three names:
 
 - [[zkgpt]] — **constraint fusion**: merge the computation between two adjacent roundings into one
-  rounding. It is explicit that this generalizes a trick [[zkcnn]] and [[zkpytorch]] used only in
+  rounding. It is explicit that this generalizes a trick [[zkcnn]] and [[zkml-kang]] used only in
   the narrow convolution→ReLU case.
 - [[deepprove]] — **delayed requantization**: fuse the non-linearity with the requantization that
   follows it and prove both in one lookup.
@@ -277,12 +286,49 @@ gave it three names:
 
 Same insight, three vocabularies: *minimize the number of seams.*
 
-:::gap  Is bit width actually the expensive knob?
+### And a fourth, which does not make the seam cheaper — it makes it free
+
+[[bionetta]] found the same thing a fourth time, in R1CS rather than sum-check, and pushed it to
+the limit the other three stop short of.
+
+Its observation is one line long. **ReLU already bit-decomposes its input** — that is how you
+extract a sign from a field with no order, and it costs $b$ booleanity constraints plus one. But
+*once you are holding the bits, a right shift is free*: you drop the low ones and recompose. So the
+rescale — the precision cut, the division, the thing this entire page has been about — costs
+**nothing at all when it rides on a ReLU you were already paying for**. Bionetta's proposition is
+that `ReLU(x) >> ρℓ` costs $b+1$ constraints, which is exactly what a bare `ReLU(x)` costs.
+
+zkGPT, DeepProve and Jolt Atlas all fuse seams to make them *cheaper*. Bionetta fuses the seam into
+a range check it had **already bought**, which makes it not cheaper but free. That is the strongest
+available form of "the range check is the entire proof": if the range check is the proof, then a
+rescale that reuses an existing range check is not a cost at all.
+
+The price is that you only get it where a ReLU is. It is a **ReLU-family-only** result — which is
+precisely why Bionetta supports the ReLU family and nothing else, and why it has no softmax.
+
+:::gap  Is bit width actually the expensive knob? Two systems now say no.
 [[deepprove]] reports that raising its bit width by four bits costs well under one percent of
 prover time, because the *number* of lookup tables barely changes. If the cost is the number of
 rounding **seams** rather than their **width**, then a decade of aggressive quantization has been
-optimizing the wrong variable — trading accuracy for a saving that was never there. This is
-directly testable and nobody has tested it.
+optimizing the wrong variable — trading accuracy for a saving that was never there.
+
+**[[bionetta]] is the second data point, and it is a much sharper one, and neither paper knows the
+other exists.** Bionetta does not quantize activations to a narrow integer at all. Every value is a
+full BN254 field element carrying $\rho$ fractional bits, and a non-linearity costs $b+1$
+constraints where $b$ is the width of the **field** (254), not the width of the *value*. So
+raising $\rho$ **does not change the constraint count by one**. And the accuracy it buys is not
+marginal: measured against TensorFlow over $10^5$ random inputs, worst case across five models,
+relative error falls from $5.2\times10^{-3}$ at $\rho = 15$ to $9.4\times10^{-7}$ at $\rho = 60$.
+**Four orders of magnitude of accuracy, for zero constraints.**
+
+There *is* a cost to more precision, and it is exactly the one this section predicts: a higher
+$\rho$ means products blow past the modulus sooner, so you must insert precision cuts **more
+often**. The bill for precision does not arrive as *width*. It arrives as **seams** — and when a
+seam lands on a ReLU, it is free, and when it does not, it costs a full decomposition.
+
+Two systems, two unrelated proof systems, one answer: **the expensive knob is the number of seams,
+not the number of bits.** It is still true that nobody has run the experiment deliberately. It is
+no longer true that there is no evidence.
 :::
 
 ## Softmax is the worst thing in the building
@@ -306,10 +352,11 @@ saturating clamp made unique by a complementary-slackness argument.
 
 And [[hao-et-al]] gives the cleanest measurement anyone has of what non-linear dynamic range
 costs, by benchmarking the operators standalone: softmax against ReLU, same system, same hardware.
-The gap between them — in both proving time and proof size — is the price of the exponent field,
-and it is not a small gap. RMSNorm/LayerNorm is the same story in miniature: a sum of squares
-(magnitude grows quadratically) followed by a reciprocal square root (both ends of the range at
-once).
+The gap between them — in both proving time and communication (this is an interactive,
+designated-verifier system; the megabytes are bandwidth, not a proof object) — is the price of the
+exponent field, and it is not a small gap. RMSNorm/LayerNorm is the same story in miniature: a sum
+of squares (magnitude grows quadratically) followed by a reciprocal square root (both ends of the
+range at once).
 
 **The map of "hard to quantize" and the map of "expensive to prove" are the same map.** That is
 not a coincidence — both are measuring dynamic range.
@@ -331,17 +378,16 @@ condition, made of activations.**
 That single observation ties the whole page together. The outliers of §"the statement is
 conditional" (which threaten field overflow), the dynamic range of §1 (which forced BF16), and the
 expense of softmax in every prover here are *the same phenomenon*, seen from three angles. And it
-is empirically load-bearing: Bondarenko et al. report a vanilla BERT-base whose maximum activation
-infinity-norm is ~735, and which is **destroyed** by W8A8 quantization (perplexity in the
-thousands). Swap in a *clipped* softmax that **can** emit exact zeros, and the infinity-norm falls
-to ~21 and W8A8 perplexity lands at ~4.5 — a working model.
+is empirically load-bearing: Bondarenko et al. report that a vanilla BERT-base is **destroyed** by
+W8A8 quantization, and that swapping in a *clipped* softmax which **can** emit exact zeros
+collapses the activation infinity-norm and restores a working model.
 
-The industry's own carve-outs confirm the diagnosis from the other side. SmoothQuant quantizes the
-linear layers and attention BMMs to INT8 and explicitly keeps **Softmax, LayerNorm and the residual
-connections in FP16**. DeepSeek-V3 — the largest publicly documented FP8 training run — puts all
-three Linear GEMMs in FP8 but keeps the **normalization operators and attention operators** in
-BF16/FP32. It also found its hardware's FP8 accumulation retained only ~14 bits of the partial sum,
-and had to promote to FP32 every 128 elements to stay correct.
+The industry's own carve-outs confirm the diagnosis from the other side.
+[SmoothQuant](https://arxiv.org/abs/2211.10438) quantizes the linear layers and attention BMMs to
+INT8 and explicitly keeps **Softmax, LayerNorm and the residual connections in FP16**.
+[DeepSeek-V3](https://arxiv.org/abs/2412.19437) — the largest publicly documented FP8 training run
+— puts all three Linear GEMMs in FP8 but keeps the **normalization operators and attention
+operators** in BF16/FP32.
 
 **The parts of a transformer that industry refuses to put in 8 bits are exactly the parts zkML
 must put in a lookup table.** Both are paying for the same missing exponent field.
@@ -444,7 +490,7 @@ selecting — bit decomposition, comparisons, shifts.
 Two independent primary sources agree on what that costs, and they agree with each other exactly.
 Here is the comparison as [[zip]] compiles it, and as the ZKLP paper independently restates it:
 
-:::quote{src="ZKLP (Ernstberger et al.)" sec="§6, Comparison With Other Works"}
+:::quote{src="ZKLP (Ernstberger et al.)" sec="§5.1, Comparison With Other Works"}
 Naively converting FP32 operations compliant to IEEE 754 requires 2456 and 8854 boolean gates for
 addition and multiplication [22]. FP64 addition and multiplication require 15637 and 44899 boolean
 gates respectively [21].
@@ -467,11 +513,12 @@ absorbed by the zkML literature as proof that floats are hopeless. The conclusio
 travelling for years without anyone opening the table it came from.
 :::
 
-Compose that up to a real activation and it gets ugly. [[zip]] estimates a **single GeLU** under
-true IEEE-754 semantics — those primitives plus $\sqrt{\cdot}$ and $\tanh$ — at roughly **1.3
-million R1CS constraints in single precision and 6.8 million in double.** For one activation, on
-one scalar. GPT-2 evaluates a GeLU on every one of its 3,072 MLP hidden units in each of its 12
-layers — roughly $4\times10^4$ of them per token, before a single matmul is proven.
+Compose that up to a real activation and it gets ugly. [[zip]] adds up those primitives, plus
+$\sqrt{\cdot}$ and $\tanh$, and estimates that "a single GeLU activation requires approximately
+1,302,142 R1CS constraints in single precision (and 6,808,760 R1CS constraints in double
+precision)." For one activation, on one scalar. GPT-2 evaluates a GeLU on every one of its 3,072
+MLP hidden units in each of its 12 layers — roughly $4\times10^4$ of them per token, before a
+single matmul is proven.
 
 That is the number the whole field is quietly reasoning from, and it *is* hopeless. But it is the
 cost of **naive** emulation — transliterating a software float routine into gates. It was never a
@@ -496,7 +543,9 @@ rounded to the nearest number (as is done in the IEEE standard). Instead, our mo
 larger (by a factor of 2 in some cases) absolute error.
 :::
 
-It buys roughly **57× on the prover for FP32 and 236× for FP64** against exact-IEEE verification.
+Against the prior method of verifying that the computation followed IEEE exactly, Garg et al. report
+that their prover is
+"~57× faster for 32-bit floating point numbers, and 236× faster for 64-bit floating point numbers."
 
 **And that is precisely [[zip]]'s technique, one level up.** ZIP applies the same relative-error
 relation not to individual float gates but to whole *activations* — cite-for-cite, it is Garg's
@@ -522,14 +571,16 @@ multiplications require 209 constraints, whereas 2¹⁵ FP32 multiplications req
 per operation.
 :::
 
-**Sixty-four constraints for a bit-exact IEEE-754 single-precision multiply.** Against 8,854
-Boolean gates for the naive version of the same operation. The "floats are infeasible" premise
-does not survive that sentence.
+**Sixty-four constraints, amortized, for a bit-exact IEEE-754 single-precision multiply** — against
+the naive gate count quoted two paragraphs up. The "floats are infeasible" premise does not survive
+that sentence.
 
 And it gets sharper. ZKLP compares its float circuits not against other float circuits but against
-*fixed point* — and finds fixed point **losing**, by 15.9× in constraints for single precision and
-12.2× for double, because achieving comparable accuracy in fixed point demands so many bits. In
-that application, **floating point is the cheaper circuit.** The core trade of this whole document
+*fixed point* — and finds fixed point **losing**: measured against an unoptimized fixed-point
+baseline, "our optimized implementation has 15.9× less constraints utilizing single precision
+floating-point values, and 12.2× less constraints when utilizing double precision floating-point
+values," because achieving comparable accuracy in fixed point demands so many bits. In that
+application, **floating point is the cheaper circuit.** The core trade of this whole document
 — "give up dynamic range, buy cheap arithmetic" — is not a law. It is a bet that can go the other
 way.
 
@@ -538,11 +589,12 @@ ZKLP also makes the soundness argument I make in the overflow section above, and
 :::quote{src="ZKLP (Ernstberger et al.)" sec="§1, Introduction"}
 with randomly generated test cases, fixed-point representation fails some tests whereas
 floating-point passes all. Even worse, this inconsistency can be exploited by adversaries to
-generate valid proofs for maliciously crafted statements, thereby breaking the soundness
+generate valid proofs for maliciously crafted statements, thereby breaking the soundness of ZKLP.
 :::
 
-That is not a precision complaint. That is: **the fixed-point/float mismatch is an exploitable
-soundness gap**, said out loud, by people who went looking.
+That is not a precision complaint. They say it of their own protocol; but the mechanism is not
+specific to ZKLP. It is the fixed-point/float mismatch, and it is **an exploitable soundness gap
+wherever it appears** — found by people who went looking.
 
 :::debate  Is the field's founding premise just wrong?
 Every zkML paper in this section justifies quantization by asserting that native floating point is
@@ -551,20 +603,23 @@ gate-count — and it has been repeated across the literature for years without 
 
 The oldest instance of it in this repo is the 2023 [[modulus-cost-of-intelligence]] report, which
 states the "fundamental incompatibility" of floats with a finite field as flat assertion — no
-citation, no measurement — and it has been passed down ever since. Worth noting too that Modulus's
-own field choice was **not** precision-driven at all: it picks Goldilocks because "elements within
-the Goldilocks field can be represented in 64 bits, resulting in faster arithmetic operations on
-standard hardware." The tidy *precision → bit width → field size* story that [[zkpytorch]] tells
-(and that this page opened with) is a **later rationalization**. Historically, people picked the
-fast field and quantized to fit it.
+citation, no measurement — and it has been passed down ever since. Worth noting too what Modulus
+actually says about field size. It is a benchmark report, not a system — it compares Groth16,
+Gemini, Winterfell, Halo2, Plonky2 and zkCNN — and the reason it gives for Plonky2 winning on
+prover time is not precision but hardware: "elements within the Goldilocks field can be represented
+in 64 bits, resulting in faster arithmetic operations on standard hardware." Nowhere in the report
+does the choice of field follow from a precision requirement. So the tidy *precision → bit width →
+field size* story that [[zkpytorch]] tells (and that this page opened with) looks like a **later
+rationalization**: the fast field was there first, and the numerics were fitted to it.
 
 Two papers outside the zkML bubble have now beaten it: one by relaxing IEEE semantics to a
 relative-error bound, one by keeping full IEEE compliance and moving the work into lookup
 arguments. **Not one system that proves a transformer cites either of them.** [[range-arithmetic]]
 lists [[garg-fp]] in its reference section without engaging with it, and that is the whole of the
-contact — [[deepprove]], [[zkgpt]], [[zkllm]], [[zkpytorch]], [[jolt-atlas]] and [[zip]] do not
-mention this line at all. See [the bridge](./bridge/) for the shape of the gap, which is stranger
-than a simple absence.
+contact — [[deepprove]], [[zkgpt]], [[zkllm]], [[zkpytorch]] and [[jolt-atlas]] do not mention this
+line at all. The one exception is [[zip]], which cites [[garg-fp]] and adopts its relative-error
+model wholesale — and [[zip]] is not a transformer prover. See [the bridge](./bridge/) for the
+shape of the gap, which is stranger than a simple absence.
 
 **The honest position is not "zkML should use floats."** For an LLM's *matmuls*, integer
 sum-check remains overwhelmingly cheaper — 64 constraints per multiply is wonderful next to 8,854
@@ -580,7 +635,9 @@ current state of the art.** Somebody should.
 [[zip]] (CCS '25) is the counter-thesis, and its trick is worth understanding exactly:
 
 1. **Offline**, approximate the activation by a piecewise polynomial — GeLU gets 8 pieces of
-   degree 10 — and store the coefficients in a lookup table of just **70 entries**.
+   degree 10 — and store the coefficients in a lookup table so small that ZIP can say "to prove
+   GeLU, ZIP requires 70 table entries. This is one to three orders of magnitude smaller than prior
+   schemes."
 2. **Online**, the prover computes the activation *exactly, in IEEE-754 double*, and feeds **that
    exact value** forward. The polynomial output is never used downstream — which is what stops
    approximation error from compounding across depth. This is the key move.
@@ -594,9 +651,10 @@ enforced division-free by witnessing $l_1 = y - f(y')$, $l_2 = \delta f(y')$ and
 $z_3 = (l_1+l_2)(l_2-l_1)$, then proving $z_3 \ge 0$ — i.e. $l_1^2 \le l_2^2$. Non-negativity of a
 float is just "sign bit is zero or mantissa is zero", which is nearly free.
 
-The result: GeLU drops from ~6.8 million constraints to **5,830**, while the value flowing through
-the network is a genuine double. The cost of an activation is now decoupled from the *complexity*
-of that activation, which is why it generalizes to SeLU and ELU with no redesign. **Quantization
+The result: against the multi-million-constraint naive estimate quoted above, ZIP reports that "to
+prove a single GeLU activation ZIP requires 5,830 R1CS constraints" — while the value flowing
+through the network is a genuine double. The cost of an activation is now decoupled from the
+*complexity* of that activation, which is why it generalizes to SeLU and ELU with no redesign. **Quantization
 is a design choice made to fit the prover, not a law of nature.**
 
 ### But read the guarantee carefully
@@ -651,9 +709,9 @@ Four positions, and the field only knows about one of them:
 
 | Approach | What it proves | Cost |
 |---|---|---|
-| **Naive IEEE-754 emulation** | bit-exact IEEE, incl. rounding | ~$10^6$ constraints/activation. Hopeless. |
-| **Relative-error floats** ([[garg-fp]]) | result within $\delta$ of exact; $\delta$ = machine epsilon | ~57×/236× better than naive (FP32/FP64) |
-| **Lookup-based exact floats** ([[zklp]]) | **bit-exact IEEE, TestFloat-validated** | **~64 constraints per FP32 multiply, amortized** |
+| **Naive IEEE-754 emulation** | bit-exact IEEE, incl. rounding | "approximately 1,302,142 R1CS constraints" per GeLU, on ZIP's own estimate. Hopeless. |
+| **Relative-error floats** ([[garg-fp]]) | result within $\delta$ of exact; $\delta$ = machine epsilon | Garg et al.: "~57× faster ... for 32-bit floating point numbers, and 236× faster for 64-bit" |
+| **Lookup-based exact floats** ([[zklp]]) | **bit-exact IEEE, TestFloat-validated** | ZKLP: "2¹⁵ FP32 multiplications require 64 constraints per operation" |
 | **Integer quantization** | the *quantized* network, assuming no overflow | what everyone ships; cost moves into range checks |
 
 The cost of floats did not disappear — it **moved**, exactly as the cost of quantization moved.
@@ -672,20 +730,58 @@ Everything above collapses to five independent choices:
    bits (forces a big field), or nowhere and trust calibration (what everyone does).
 2. **How do you kill the arbitrary float scale?** Integer multiplier + power-of-two shift
    ([[deepprove]]), or rational approximation + inequality ([[zkgpt]]). Neither needs a division.
-3. **How often do you round?** The actual cost driver. Fuse aggressively.
+   Or sidestep it: [[bionetta]]'s scale is a power of two *by construction* ($2^{\rho}$), which is
+   available to it only because it never has to match a pre-quantized model's arbitrary
+   per-layer scales.
+3. **How often do you round?** The actual cost driver. Fuse aggressively — and if you can, fuse
+   the rounding into a range check you were buying anyway ([[bionetta]]), which is the only way
+   anyone has made a seam cost zero.
 4. **How do you get non-linearity?** Lookup table ([[zkpytorch]], [[zkllm]], [[jolt-atlas]]),
    polynomial approximation ([[zip]]), or restrict the model so you don't need one
-   ([[safetynets]]' quadratics).
+   ([[safetynets]]' quadratics, [[bionetta]]'s ReLU family) — noting that these two "restrict the
+   model" answers restrict it in *opposite* directions, and the debate above is about which one is
+   actually cheap.
 5. **Do you prove range, argue range, or assume range?** Most of the field assumes. That is where
    the bodies are buried.
 
 And one closing observation. [[safetynets]] — the oldest system here — has **no rescale seam at
 all**: quadratic activations are polynomial, so the whole network is one arithmetic circuit with
-no rounding anywhere. Its prover overhead over unverified execution is a few percent. Everything
-that came after pays three to six orders of magnitude more. That gap is not only the price of
-zero-knowledge and commitments, which SafetyNets does not provide. **A large part of it is simply
-the price of rounding** — the cost of insisting the model may be an arbitrary network rather than
-one the prover got to choose.
+no rounding anywhere. Its prover overhead over unverified execution is a few percent. Every LLM
+prover here is orders of magnitude worse — [[deepprove]] puts its own cost at
+"roughly 24× slowdown" against plaintext GPT-2, and at "almost three orders of magnitude" on
+short-output prompts. That gap is not only the price of zero-knowledge and commitments, which
+SafetyNets does not provide. **A large part of it is simply the price of rounding** — the cost of
+insisting the model may be an arbitrary network rather than one the prover got to choose.
+
+:::debate  Does a polynomial network really have no seam? Bionetta says the seam just moves.
+That closing observation is the one I would most like to be right, and [[bionetta]] is the reason
+I am no longer sure it is.
+
+Bionetta considers polynomial activations explicitly — Π-nets, the same family SafetyNets
+belongs to — and **rejects them**, for a reason that is precisely this page's reason. A degree-$d$
+polynomial costs only $d$ constraints per value, which looks like a bargain. But evaluating it
+*multiplies the precision*: a value carrying $\rho$ fractional bits, raised to the $d$-th power,
+carries $\rho d$ of them. Stack a few layers and the accumulator walks straight into the modulus.
+So you must insert a precision cut — and a precision cut costs $\approx b$ constraints, which
+swallows the $d$ you saved. In Bionetta's words, the benefit of $d$ constraints per value *is lost
+in the overhead of precision cuts*.
+
+**A polynomial activation does not abolish the rescale seam. It relocates it — from the
+non-linearity to the precision blow-up the non-linearity causes.**
+
+Both claims are in this SoK and neither paper has read the other. The reconciliation is probably
+depth: SafetyNets' networks are shallow enough, and its Mersenne field wide enough, that the
+$2^{\text{depth}}$ precision growth never reaches the modulus — it *analytically rules out* scaling
+factors that would overflow, which is posture 2 in the overflow section below, and it works because
+the model is small. Bionetta is describing what happens when you try to take that trick to a real
+network. If that is right, then SafetyNets' few-percent overhead is not a standing indictment of
+everything since; it is **a number that only exists at a depth nobody wants to deploy**, and the
+"price of rounding" is not optional after all — it is what you pay the moment the network is deep
+enough to be useful.
+
+Somebody should settle this. It is one experiment: take SafetyNets' quadratic network, scale the
+depth, and plot where the precision cuts become unavoidable.
+:::
 
 ## Why ZK cannot borrow MPC's shortcut
 
@@ -726,8 +822,12 @@ Ranked by how much I would want the answer.
 
 1. **Is bit width actually the expensive knob, or is it the number of seams?** [[deepprove]]'s
    near-free precision increase says cost tracks the *count* of rounding seams, not their *width*.
-   If that generalizes, the field has been trading accuracy for a saving that was never there.
-   Directly testable, and the highest-value experiment here.
+   **[[bionetta]] now says the same thing from a different proof system** — four orders of magnitude
+   of accuracy for zero extra constraints, because its decomposition is over the field element and
+   not over the value. Two independent systems, one answer, and no citation between them. If it
+   generalizes, the field has been trading accuracy for a saving that was never there. Directly
+   testable, still the highest-value experiment here, and it now has a hypothesis worth stating
+   sharply enough to fail: *precision is paid for in seams, not in bits.*
 2. **Can an adversarial input force an overflow?** Most systems prove correctness *conditional on*
    intermediates staying in range and never prove the condition. Outliers in transformers are
    emergent and documented, not accidental. [[deepprove]] and [[jolt-atlas]] at least *bound* the
@@ -737,6 +837,13 @@ Ranked by how much I would want the answer.
 4. **Has anyone retested "floats are infeasible" since [[zklp]]?** A bit-exact FP32 multiply for a
    few dozen amortized constraints is a different world from the naive gate count the literature
    still cites. No system that proves a transformer cites either float-SNARK line.
+5. **Does a polynomial network escape the rescale seam, or only postpone it?** [[safetynets]]'
+   few-percent overhead is the whole basis for calling everything since "the price of rounding" —
+   and [[bionetta]] argues that a degree-$d$ activation inflates precision by $\rho d$ and forces
+   the seam back at $\approx b$ constraints a cut. If Bionetta is right, SafetyNets' number is an
+   artifact of shallowness and the floor of this field is much higher than we have been saying.
+   One experiment settles it: scale the depth of a quadratic network and find where the cuts
+   become unavoidable.
 
 :::gap  It is not a third island — it is the seabed
 The obvious way to write this up is: *the zkML and MPC clusters are disconnected, and the
@@ -751,8 +858,15 @@ operators rather than models ([[hao-et-al]]).
 
 What survives, and is worse than the island story: **the borrowing happens entirely at the edges.**
 Every system at the centre of the verifiability column — [[deepprove]], [[zkgpt]], [[zkllm]],
-[[zkpytorch]], [[jolt-atlas]], [[zip]] — reaches into none of it, and justifies quantization with a
-claim about floating point that the floating-point specialists refuted years ago, in papers two
-citations away from work it already cites. The bridge exists. Nobody in the middle walks it.
+[[zkpytorch]], [[jolt-atlas]], and now [[bionetta]] — reaches into none of it, and
+justifies quantization with a claim about floating point that the floating-point specialists
+refuted years ago, in papers two citations away from work it already cites. ([[zip]] is the
+exception that proves the point: it is the one system here that *refuses* quantization, and it is
+also the one that reads [[garg-fp]] and builds on it.) [[bionetta]] is the sharpest case yet,
+because it did not merely *skip* the arithmetic literature: it sat down and
+**re-derived a fixed-point quantization error bound from first principles**, in an appendix, in
+2025, in a field where [[secfloat]] has shipped a library for exactly that since 2021. A full-text
+scan of its PDF returns zero occurrences of "MPC", "homomorphic", "SIRNN", "Cheetah" or "SecFloat".
+The bridge exists. Nobody in the middle walks it.
 [Full argument, with the caveats it needs](./bridge/).
 :::

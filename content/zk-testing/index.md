@@ -4,9 +4,10 @@ section: zk-testing
 order: 10
 lede: >-
   "This model scores X on benchmark D" is the claim the market runs on, and it is the claim
-  most likely to be false. It is also the thinnest cell in this SoK -- two papers, both on
-  small models, neither of them addressing the reason the claim is hard. The hard part was
-  never the proof.
+  most likely to be false. It is also the thinnest cell in this SoK -- a handful of papers, all
+  on small models. One of them hides the test data from the model owner; none of them ties the
+  model to a time before the test set was chosen, which is what decides whether the number means
+  anything. The hard part was never the proof.
 papers: [zkdt, pvcnn, zkcnn, zen, artemis]
 status: draft
 ---
@@ -19,17 +20,16 @@ cell in the table.
 
 {{ table:testing }}
 
-Two entries. [[zkdt]] proves accuracy for a decision tree, with a genuinely elegant observation —
-test samples share nodes on a tree, so all inference paths across the whole test set can be
-validated in one step instead of once per sample, which is what makes the cost sublinear in the
-obvious thing. [[pvcnn]] proves accuracy for a small CNN, using a hybrid of homomorphic
-encryption, collaborative inference and zk-SNARKs, and splitting the model into a private and a
-public component. Three more systems cross-list into this objective from the inference cell:
-[[zkcnn]] and [[zen]] both ship an accuracy-proving mode alongside their inference mode, and
-[[artemis]] is recorded against both objectives too.
+That is the whole of it. [[zkdt]] proves accuracy for a decision tree, with a genuinely elegant
+observation — test samples share nodes on a tree, so all inference paths across the whole test set
+can be validated in one step instead of once per sample. [[pvcnn]] proves accuracy for a small
+CNN, using a hybrid of homomorphic encryption, collaborative inference and zk-SNARKs, and
+splitting the model into a private and a public component. Three more systems cross-list into this
+objective from the inference cell: [[zkcnn]] and [[zen]] both ship an accuracy-proving mode
+alongside their inference mode, and [[artemis]] is recorded against both objectives too.
 
-That is the entire literature. No LLM. No standard benchmark. Nothing that would let a lab prove
-its MMLU score.
+That is the entire literature. MNIST and a decision tree. No language model, no leaderboard
+benchmark, nothing that would let a lab prove its MMLU score.
 
 ## The proof is the easy half
 
@@ -51,10 +51,18 @@ prover is the model owner. So:
 - If the model owner does not hold the test set, they cannot evaluate the model on it, and so
   cannot produce the witness the proof needs.
 
-That is the whole difficulty, and no paper in the cell confronts it. **A zero-knowledge accuracy
-proof prevents the wrong attack.** It stops a lab from *lying about the score it measured*. It
-does nothing about a lab *measuring the score on data it has already seen* — which is the failure
-mode that actually occurs, and is a data-governance problem wearing a cryptography costume.
+Two of the systems above have half of this. [[zen]]'s ZENacc fixes the model commitment *before*
+the verifier supplies the testing dataset, so the ordering is right — but the prover then receives
+the dataset and its truth labels in the clear, and ZEN never frames the ordering as a contamination
+defence. [[pvcnn]] goes the other way: the test data stays under homomorphic encryption and the
+model developer computes on ciphertext — but we hold no PDF for it, and nothing in the survey's
+account of it, or in its abstract, binds the model to a time before the test items were chosen.
+Neither system does both, and neither states the dilemma.
+
+**A zero-knowledge accuracy proof prevents the wrong attack.** It stops a lab from *lying about the
+score it measured*. It does nothing about a lab *measuring the score on data it has already seen* —
+which is the failure mode that actually occurs, and is a data-governance problem wearing a
+cryptography costume.
 
 :::gap  The claim that would matter, and nobody proves it
 Not one system in this repo proves a benchmark score for a language model on a standard
@@ -74,15 +82,24 @@ contamination is temporal: commit to the weights, publish the commitment, and *t
 sample) the evaluation items. This makes the interesting claim provable — "this model could not
 have been trained on this test set, because it was fixed before the test set was drawn" — and it
 requires nothing more exotic than a commitment and a timestamping mechanism. It is also the one
-ingredient that makes the whole exercise worth doing, and it is absent from all five systems above.
+ingredient that makes the whole exercise worth doing. [[zen]]'s ZENacc already has the ordering:
+the model is committed first, and only then does the verifier — or a trusted third party — send
+the challenge dataset. What it does not have is any of the surrounding argument. The ordering is a
+setup-phase convenience, not a contamination defence; it binds nothing publicly to a time, it says
+nothing about where the dataset came from, and the word contamination does not appear in the paper.
+The skeleton exists in one system; nobody has closed the gap.
 
 **2. Let the evaluation happen without the prover learning the test items.** This is where the
-privacy column of the 2x2 has to be borrowed. [[pvcnn]]'s encrypted partial execution is the only
-gesture in this direction in the cell, and it is a gesture: it splits the model, not the trust.
-The clean constructions are an MPC or FHE evaluation between the model owner and a test-set holder,
-where the model owner learns only the aggregate score, or an auditor-as-prover design where the
-party holding the test set runs the prover against a committed model. Both are buildable today from
-the private-inference cell, and nobody has built them.
+privacy column of the 2x2 has to be borrowed. [[pvcnn]] is the one system in the cell that reaches
+for this: the testers' data stays under homomorphic encryption and the model developer computes on
+ciphertext, so the developer never sees the items. Its limits are elsewhere — part of the model is
+outsourced to a public server, the workload is a small CNN on MNIST, and nothing ties the test
+items to a pool the developer could not already have trained on. The clean constructions are an MPC
+or FHE evaluation between the model owner and a test-set holder, where the model owner learns only
+the aggregate score, or an auditor-as-prover design where the party holding the test set runs the
+prover against a committed model. The first exists in miniature — pvCNN is that shape, with the
+correctness zk-proven and the per-tester proofs aggregated — but not as a benchmark protocol. The
+auditor-as-prover design nobody has built at all.
 
 **3. Prove the test items were sampled honestly from a committed pool.** Otherwise you have moved
 the cheating from the model owner to the auditor, who can cherry-pick items to make a favoured

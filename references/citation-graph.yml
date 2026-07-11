@@ -16,6 +16,24 @@ citations:
   # tee-confidential-llm cites NOTHING in this corpus. Verified: the strings "zero-knowledge",
   # "zkML", "SNARK" and "proof of" appear zero times in it. (A grep hit on "Prio" was the word
   # "Prior".) Deliberately absent from this graph rather than silently omitted.
+  # Bionetta, hand-verified against its bibliography and a full-text scan of the PDF, 2026-07-11.
+  # It cites the six zkML systems it benchmarks against, plus GKR and Lasso as building blocks.
+  # It cites NOTHING from the privacy column and NOTHING from the numerics shelf -- confirmed by
+  # counting occurrences in `pdftotext` output: "MPC" 0, "homomorphic" 0, "SIRNN" 0, "Cheetah" 0,
+  # "SecFloat" 0, "ZKLP" 0, "Mystique" 0. It nonetheless derives a fixed-point quantization error
+  # bound from first principles in its Appendix C, which is precisely the subject matter of the
+  # papers it does not cite. Another node at the centre of the verifiability column that reaches
+  # into none of the arithmetic literature. No crossing edge introduced.
+  bionetta:
+    - deepprove   # "[Lab25a] Lagrange Labs. deep-prove"; benchmarked in Fig. 6
+    - ezkl        # "[Sou+24] Tobin South et al."; benchmarked in Table 4
+    - gkr         # "[GKR15] Goldwasser, Kalai, Rothblum"
+    - lasso       # "[STW24] Setty, Thaler, Wahby. Unlocking the Lookup Singularity with Lasso"
+    - zkcnn       # "[LXZ21]"; benchmarked in Table 4
+    - zkgpt       # "[Qu+] zkGPT ... USENIX Security 2025"; complexity comparison, Table 2
+    - zkml-kang   # "[Che+24] ZKML: An Optimizing System..."; benchmarked in Table 4
+    - zkpytorch   # "[Xie+25]"; "look forward to testing it in the future, yet currently it is
+                  # not available for public use (as of December 2025)"
   bolt:
     - cheetah
     - iron

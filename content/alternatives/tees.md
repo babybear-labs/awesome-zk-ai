@@ -6,8 +6,8 @@ lede: >-
   Confidential-computing GPUs run real models in production today at a throughput penalty
   ZK cannot approach. The side-channel literature against TEEs is also extensive. Both
   facts are load-bearing, and the honest position is uncomfortable.
-papers: [tee-confidential-llm, optimistic-tee-rollups, opml]
-status: draft
+papers: [tee-confidential-llm, optimistic-tee-rollups]
+status: reviewed
 ---
 
 A trusted execution environment runs the model on hardware that attests, cryptographically,
@@ -18,10 +18,21 @@ It is worth being blunt about the position TEEs occupy in this SoK, because the 
 literature has a habit of dismissing them in a subordinate clause and moving on. Of every
 approach catalogued on this site, **TEEs are the one being used, right now, by people
 paying money for verifiable and confidential inference.** [[tee-confidential-llm]]
-benchmarks confidential LLM inference across CPU and GPU TEEs; the overhead figure is in
-[the alternatives table](/alternatives/), and it is close enough to free that the
-engineering conversation is basically over. Phala's GPU TEEs serve inference on OpenRouter
-today. There is no zkML deployment of comparable scale, and there will not be one soon.
+benchmarks confidential LLM inference across CPU and GPU TEEs. On a single device, running
+a model that fits on it, the overhead is a rounding error next to ZK's:
+
+{{ table:alternatives_to_zk cols=platform,overhead_percent,overhead_metric }}
+
+It is not a general constant, and the paper is candid about that. Confidential H100
+instances lose RDMA and GPUdirect, so every byte crosses the CPU and multi-GPU serving —
+which is to say, serving anything that does not fit on one card — falls off a cliff. The
+H100's HBM is left unencrypted, where the CPU TEEs it is measured against do encrypt
+memory, and the authors expect the successor part that closes the gap to cost more. And
+the network protection they say is required on top of both CPU and GPU TEEs costs far more
+than the headline. The engineering conversation is over for the single-GPU case and open
+above it. Vendors advertise the same thing in production — Phala's GPU TEEs are offered
+for inference on OpenRouter — though that is their claim, not this paper's. There is no
+zkML deployment of comparable scale, and there will not be one soon.
 
 So the case for zkML cannot be that TEEs are impractical. They are the practical option.
 The case has to be made on the assumption, and it has to be made honestly.
@@ -32,7 +43,9 @@ Trusting a TEE means trusting, at minimum:
 
 1. **The hardware vendor's key infrastructure.** The attestation is a signature. Someone
    holds that signing key, and that someone can attest to anything.
-2. **The silicon's isolation guarantees**, as implemented — not as specified.
+2. **The silicon's isolation guarantees**, as implemented — not as specified. The paper
+   cited above documents a live instance of the gap: the confidential H100 leaves its HBM
+   unencrypted, which the CPU TEEs it is compared against do not.
 3. **The attestation chain and its revocation infrastructure**, including the vendor's
    ability and willingness to revoke a compromised part.
 4. **The measured binary being the thing you think it is** — attestation proves *what*
@@ -43,8 +56,9 @@ Point 4 is routinely elided and it is the important one for this SoK's purposes.
 tells you the provider ran *the binary whose hash is X*. Whether the weights inside that
 binary are the weights they advertised is a question about what got measured, and it is
 exactly the model-substitution question that verifiable inference exists to answer. A TEE
-can answer it — if the attestation covers the weights. Many deployments attest the
-container and not the model artefact.
+can answer it — if the attestation covers the weights. Whether it does, or whether the
+measurement stops at the container that loads them, is a deployment choice — and it is the
+choice that decides whether the TEE answers that question at all.
 
 ## The side-channel literature is not a talking point
 
@@ -115,8 +129,8 @@ architecture; it does not state the theorem. Neither does any other hybrid in th
 ## The honest summary
 
 If your verifier will accept an NVIDIA attestation, zero knowledge is an extraordinarily
-expensive way to buy a confidence you already had — and the overhead column in
-[the table](/alternatives/) is not close. The reason to reach for ZK is not that TEEs
+expensive way to buy a confidence you already had — and the overhead table above is not
+close, even once every caveat above it is paid. The reason to reach for ZK is not that TEEs
 don't work. It is that **some verifiers cannot make that assumption**, and no amount of
 engineering will make them able to. That is a small set of deployments. It is not an empty
 one, and it contains most of the ones people write papers about.

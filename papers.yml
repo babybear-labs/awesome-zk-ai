@@ -13,6 +13,12 @@
 #     `numbers_source: survey`   = taken from Tables IV/V/VI of the ZKP-VML survey
 #                                  (arXiv:2502.18535). Secondhand. Where the survey and the
 #                                  primary paper disagree, both are recorded and flagged.
+#     THIRD-PARTY MEASUREMENTS are the awkward case, and `ezkl` is the first one. A number we
+#     read in a PDF we hold is `primary` by this file's definition -- but when the PDF belongs to
+#     a COMPETITOR who chose the models and the hardware, "primary" flatters it. Rule: keep the
+#     tag `primary` (we did read it), and carry a mandatory `numbers_note` naming who measured it.
+#     A system's benchmarks are not the same object as a system's *self-reported* benchmarks, and
+#     the difference has to survive into the prose. Never write "X reports" for a number Y took.
 #   - `authors_verified: false`  = author list not yet confirmed against the paper. Do not
 #                                  cite these without checking.
 #   - `quantization` is a CONFOUNDER, not a footnote. Proving cost depends on the bit width
@@ -497,6 +503,15 @@ inference:
       on 32 threads. The last of those is closer to ZKML's IPA backend (3949.60 s / 11.98 s /
       16512 B) than to its KZG one, so zkGPT may be benchmarking a different backend than it
       compares against. Do not mix these rows.
+
+      A FOURTH RE-MEASUREMENT, on CNNs rather than GPT-2: Bionetta (Table 4) runs ddkang/zkml on
+      five vision models on a 16-thread Xeon and reports 185 s (LeNet5), 1100 s (a 2M-param MNIST
+      MLP), 1580 s (VGG11-mini), 1660 s (ResNet18) and 1135 s (MobileNetV2), with proving keys of
+      2.4-19.3 GB and peak RAM of 6.9-52.3 GB. Verification is genuinely fast (12-23 ms) and the
+      proofs are genuinely small (5-6.7 kB) -- so on the VERIFIER side ZKML behaves the way the
+      Halo2 story says it should, which is exactly what ezkl, on the same hardware and the same
+      models, does NOT. The two most-deployed PLONKish zkML toolchains do not have the same
+      verifier profile, and the literature treats them as one row.
     quantization:
       bits: null  # the paper does not state a bit width for the GPT-2 run
       bits_note: "Not stated. ZKML discusses scale factors but does not print a bit width."
@@ -523,6 +538,257 @@ inference:
         proving_time_note: >-
           The IPA backend: slower to prove, but smaller proofs and faster verification. zkGPT's
           re-measurement of "ZKML" (4026 s / 12.1 s) tracks this row, not the KZG one.
+
+  - id: bionetta
+    name: Bionetta
+    claim_kind: pass  # one forward pass of a CNN. There are no tokens here -- see threat_model.
+    title: "Bionetta: Efficient Client-Side Zero-Knowledge Machine Learning Proving"
+    url: https://arxiv.org/abs/2510.06784
+    pdf: https://arxiv.org/pdf/2510.06784v2
+    venue: "arXiv:2510.06784v2 (technical report, not peer-reviewed)"
+    date: 2025-12-08  # v2. v1 is 2025-10-08.
+    year: 2025
+    authors:
+      - Dmytro Zakharov
+      - Oleksandr Kurbatov
+      - Artem Sdobnov
+      - Lev Soukhanov
+      - Yevhenii Sekhin
+      - Vitalii Volovyk
+      - Mykhailo Velykodnyi
+      - Mark Cherepovskyi
+      - Kyrylo Baibula
+      - Lasha Antadze
+      - Pavlo Kravchenko
+      - Volodymyr Dubinin
+      - Yaroslav Panasenko
+    authors_verified: true  # read off the Authors section, p. 28. The report has no byline on p.1.
+    affiliation: Rarimo / Distributed Lab
+    proof_system: "UltraGroth -- Groth16 with in-circuit lookup rounds -- over R1CS (Circom), BN254"
+    commitment_scheme: [Groth16 pairing-based, per-circuit trusted setup]
+    hardware: >-
+      Intel Xeon E5-2665 (16 threads @ 3.10 GHz), 350 GB RAM. Mobile benchmarks on an
+      iPhone 14 Pro (A16 Bionic), via a custom rapidsnark fork and Ingonyama's imp1.
+    threat_model: >-
+      INVERTED relative to every other system in this category, and this is the single most
+      important fact about the paper. The rest of the verifiability column is MLaaS: the SERVER
+      proves, the WEIGHTS are the secret, and the client is the verifier. Bionetta is the
+      opposite -- the CLIENT proves, on their own phone, over a PRIVATE INPUT, against a model
+      whose weights and architecture are PUBLIC. Its motivating applications are biometric
+      proximity ("this face matches the enrolled template") and liveness, where the thing worth
+      hiding is the user's face, not the network. The library's own README states the limit in a
+      warning box -- "the library is not intended for private model weights + public input
+      proving. The library is designed only for public model weights + private/public input
+      proving!" -- which is a restriction the paper's abstract does not mention. Every claim it
+      makes should be read inside that box. It is not competing with DeepProve or zkGPT; it is
+      answering a different question, and it is the only system in this corpus that does.
+    open_source: partial
+    repo: https://github.com/Anonymous1725/Bionetta
+    open_source_note: >-
+      The TensorFlow SDK is public (constraint calculator, codegen, layer definitions, prover
+      driver). The Circom templates that emit the actual constraints are NOT: `codegen/generator.py`
+      clones a repo named `bionetta-circom`, and no such repository is public under rarimo/ or
+      anywhere else we can find. So the range checks -- which, per the numerics section, ARE the
+      proof -- are the one part you cannot read. There is also a public JS SDK
+      (rarimo/bionetta-js-sdk) and a developer-docs repo, i.e. this is deployed, not a preprint
+      artifact: it backs Rarimo's biometric identity app.
+    numbers_source: primary  # we read the PDF (Tables 4, 5, 6) and cloned the SDK.
+    objectives: [inference]
+    quantization:
+      bits: null
+      bits_note: >-
+        THE PAPER HAS NO "BIT WIDTH" IN THE SENSE THE REST OF THIS TABLE MEANS IT, and that is a
+        finding rather than an omission. Bionetta does not quantize activations down to a narrow
+        integer. It keeps every value as a full BN254 field element carrying `rho` fractional bits,
+        and the cost of a non-linearity is set by the size of the FIELD (254 bits), not by the
+        width of the value. Raising rho therefore does not change the constraint count at all.
+        The shipped SDK's default is rho = 15 (`Groth16.DEFAULT_PRECISION`), which is the LEAST
+        accurate of the four settings the paper measures.
+      scheme: >-
+        Fixed point with a precision parameter rho: Q(x) = F_p([2^rho x]), D(x) = 2^-rho Z(x).
+        Sign is decided by the (b-1)-th bit -- the threshold for "negative" is 2^(b-1), NOT the
+        conventional (p-1)/2, a deviation the paper flags as a convenience choice. Rescaling is
+        the "precision cut": a right shift by `l * rho`, needed because a degree-n product
+        accumulates precision n*rho and would otherwise exceed the field. Error bound proved in
+        Appendix C: |D(C_f(x,y)) - f(x,y)| <= 2^-rho * beta + 2^-2rho, with beta = 2 max(|x|,|y|)
+        "assumed to be relatively small" -- an ML assumption doing cryptographic work, as usual.
+      accuracy_retention: >-
+        Relative error ||y - y_rho|| / ||y||, worst case across all five models, over 10^5 random
+        inputs: 5.2e-3 at rho=15, 3.7e-5 at rho=30, 2.0e-6 at rho=45, 9.4e-7 at rho=60. Note what
+        this says: four orders of magnitude of accuracy bought for ZERO extra constraints, because
+        the b-bit decomposition is over the field element either way. See notes.
+    notes: >-
+      Three ideas, and the second and third both matter well beyond this paper.
+
+      (1) CIRCUIT-EMBEDDED WEIGHTS. Because the model is public, the weights are compiled into the
+      R1CS as CONSTANTS rather than passed in as signals. R1CS charges nothing for
+      multiplication-by-constant, so every linear layer -- every matmul, every convolution, and
+      BatchNorm folded into it -- costs LITERALLY ZERO CONSTRAINTS. Proving cost is then a
+      function of one thing only: the number of non-linearity calls. This is the same conclusion
+      the sum-check line reaches (matmuls are nearly free; the money is at the non-linear seams)
+      arrived at from a completely different direction, and it is worth having both. Measured
+      effect (Table 5): ResNet18 drops from 37.85M constraints to 1.16M (~32x) and from 270 s to
+      14 s. The catch is that it is only available because the weights are public -- this
+      optimization is structurally unavailable to every MLaaS system in this table.
+
+      (2) ULTRAGROTH. Lookup arguments inside Groth16, which is supposed to be impossible: LogUp
+      (Haboeck) needs a verifier challenge sampled AFTER the witness is committed, and Groth16 has
+      no rounds. UltraGroth adds them -- the witness is split into d+1 "rounds", each round's
+      commitment is hashed to derive the next round's challenge (Fiat-Shamir with an in-circuit
+      random oracle), and the extra commitments ride along in the proof. Cost: one extra pairing
+      (4 instead of 3), one extra hash, and d+1 extra G1 elements. Proven complete, sound and
+      zero-knowledge in GGM+ROM (Appendix A). This is the interesting cryptographic contribution
+      and it is buried in a vendor tech report. The payoff: a ReLU's range check drops from b
+      constraints to b/w, with w the limb size; prover complexity O(2^(w+1) + bL/w + 4L) for L
+      range checks, i.e. O(N / log N).
+
+      (3) THE RESCALE SEAM IS FREE, WHEN IT RIDES ON A ReLU. This is the fact the numerics page
+      should carry. ReLU already bit-decomposes its input to determine the sign -- that IS the
+      range check. Once you have the bits, dropping the low `l*rho` of them is a right shift that
+      costs NOTHING: "Computing ReLU(x) >> rho*l for some fixed l costs b+1 constraints" -- the
+      same b+1 as a bare ReLU. The rescale after a matmul, which every other system in this corpus
+      pays for at every seam, is here fused into a decomposition it was already buying. It is the
+      strongest form of the "round less often / fuse the seam" result that zkGPT (constraint
+      fusion), DeepProve (delayed requantization) and Jolt Atlas (i64 rebase) each found
+      independently -- and Bionetta found it a fourth time, citing none of them for it.
+
+      AND THE COROLLARY IT DRAWS, WHICH CONTRADICTS SAFETYNETS. Bionetta explicitly rejects
+      polynomial activations (pi-nets), and its reason is the seam: a degree-d polynomial costs
+      only d constraints per value, but it RAISES the precision of the result by rho*d bits, which
+      forces a precision cut, which costs ~b constraints. "The benefit of d constraints per value
+      is lost in the overhead of precision cuts." Read that against SafetyNets, whose whole cost
+      advantage comes from quadratic activations having no rescale seam at all: Bionetta is saying
+      the seam does not disappear under a polynomial activation, it just moves to where the
+      precision blew up. Nobody has reconciled these two claims and they are both in this corpus.
+
+      WHAT IT CANNOT DO. No softmax, no attention, no LayerNorm, no transformer, no general ONNX.
+      The supported non-linearities are exactly ReLU, LeakyReLU (alpha a power of two only),
+      ReLU6, HardSigmoid and HardSwish -- the ReLU family, chosen because they are the ones whose
+      cost the sign-bit decomposition already pays for. `ActivationOps.from_keras` in the SDK maps
+      Softmax to `NOT_SUPPORTED`. Do NOT put this system on the tokens-per-minute axis; it is not
+      an LLM prover and does not claim to be.
+    conflict_flag: >-
+      Bionetta re-measures ezkl, ddkang/zkml and zkCNN on its own hardware (Table 4) and those are
+      the only primary-source numbers we have for ezkl anywhere in this corpus. They are recorded
+      on those systems' entries and flagged there as third-party measurements by a competitor.
+      Treat with the usual care: Bionetta chose the models, chose the hardware, and is the party
+      being flattered.
+    audit_flag: >-
+      UNVERIFIED, AND THE ONE THING WE MOST WANT SOMEBODY TO CHECK. Section 4.3's own reasoning
+      for the ReLU cost is: decompose x into b bits, boolean-constrain each x_i via x_i(1-x_i)=0
+      (b constraints), then one more constraint for the output -- b+1. The shipped SDK prices
+      `ActivationOps.RELU` at exactly 255 under Groth16 ("costs below are specified manually based
+      on the current Circom implementation"), and 255 = 254 + 1 with b = 254 for BN254. That count
+      leaves NO ROOM for a canonicity check. But 2^254 > p for BN254, so a b-bit boolean
+      decomposition does not uniquely determine a field element: for any x < 2^254 - p (~0.32p,
+      which is every activation any real network produces), the bit string of x + p ALSO satisfies
+      every booleanity constraint and ALSO recomposes to x mod p -- and its bit 253 is SET, so the
+      sign test reads a positive activation as negative and ReLU returns 0. This is the textbook
+      Circom `Num2Bits` vs `Num2Bits_strict` distinction; the strict version costs roughly double,
+      which is consistent with 255 being the unstrict one. It is made worse, not better, by the
+      paper's deliberate choice to put the negativity threshold at 2^(b-1) rather than (p-1)/2.
+      If this is what the circuit does, a malicious prover can zero out any ReLU it likes and
+      still produce a verifying proof -- which, in the biometric application, is a forged
+      authentication. WE CANNOT CONFIRM IT: `bionetta-circom` is not public. This is where we
+      would look, not what we have found.
+    benchmarks:
+      - model: MNIST MLP
+        params: 2000000  # "two million parameters and 6K activations", Sec 6.1
+        proving_time_s: 3.05
+        proof_size_mb: 0.00088
+        verification_time_s: 0.010
+        constraints: 250000
+        peak_ram_gb: 0.27
+        proving_key_gb: 0.20
+        verification_key_mb: 0.004
+      - model: LeNet5
+        params: null  # not stated in the paper; the standard LeNet5 is ~60k but we do not guess
+        proving_time_s: 3.75
+        proof_size_mb: 0.00088
+        verification_time_s: 0.010
+        constraints: 260000
+        peak_ram_gb: 0.28
+        proving_key_gb: 0.22
+        verification_key_mb: 0.004
+      - model: VGG11-mini
+        params: null
+        params_note: >-
+          "We reduced VGG11 for benchmarking since zkml and EZKL frameworks ran out of RAM memory
+          for original architecture." The reduced architecture is not specified. This row is not
+          comparable to anyone else's VGG11.
+        proving_time_s: 7.70
+        proof_size_mb: 0.00088
+        verification_time_s: 0.020
+        constraints: 730000
+        peak_ram_gb: 0.48
+        proving_key_gb: 0.63
+        verification_key_mb: 0.004
+      - model: ResNet18
+        params: null  # not stated. Standard ResNet18 is ~11.7M; the paper does not say so.
+        proving_time_s: 14.10
+        proof_size_mb: 0.00088
+        verification_time_s: 0.015
+        constraints: 1160000
+        peak_ram_gb: 0.75
+        proving_key_gb: 1.00
+        verification_key_mb: 0.004
+      - model: MobileNetV2
+        params: null
+        proving_time_s: 24.50
+        proof_size_mb: 0.00088
+        verification_time_s: 0.018
+        constraints: 2780000
+        peak_ram_gb: 1.80
+        proving_key_gb: 2.41
+        verification_key_mb: 0.004
+      # --- Table 6: the same five circuits, proved ON A PHONE. No other system in this corpus
+      # --- has this row at all, and it is the whole point of the paper.
+      - model: MNIST MLP (iPhone 14 Pro)
+        params: 2000000
+        proving_time_s: 2.80
+        proof_size_mb: 0.00088
+        peak_ram_gb: 0.230
+      - model: LeNet5 (iPhone 14 Pro)
+        params: null
+        proving_time_s: 3.55
+        proof_size_mb: 0.00088
+        peak_ram_gb: 0.145
+      - model: VGG11-mini (iPhone 14 Pro)
+        params: null
+        proving_time_s: 7.65
+        proof_size_mb: 0.00088
+        peak_ram_gb: 0.465
+      - model: ResNet18 (iPhone 14 Pro)
+        params: null
+        proving_time_s: 13.60
+        proof_size_mb: 0.00088
+        peak_ram_gb: 0.700
+        proving_time_note: >-
+          Plain Groth16 cannot do this row at all -- both rapidsnark and imp1 run out of RAM on
+          ResNet18 and MobileNetV2 on the phone. UltraGroth's constraint reduction is what makes
+          the difference between "proves in 14 seconds" and "does not fit".
+      - model: MobileNetV2 (iPhone 14 Pro)
+        params: null
+        proving_time_s: 22.96
+        proof_size_mb: 0.00088
+        peak_ram_gb: 1.700
+    # Table 5. The two optimizations, separated. "Client" = circuit-embedded weights (weights are
+    # R1CS constants); "Server" = weights passed in as signals, i.e. what every MLaaS system must
+    # do. "1QAP" = UltraGroth; "QAP" = plain Groth16. Server rows are the paper's own estimates
+    # from constraint counts, not measurements -- it says so.
+    ablation:
+      - mode: UltraGroth + embedded weights (the shipped configuration)
+        constraints_m: {mnist: 0.25, lenet5: 0.26, vgg11: 0.73, resnet18: 1.16, mobilenetv2: 2.78}
+        proving_time_s: {mnist: 3.05, lenet5: 3.75, vgg11: 7.70, resnet18: 14.10, mobilenetv2: 24.50}
+      - mode: UltraGroth, weights as signals (estimated)
+        constraints_m: {mnist: 2.19, lenet5: 0.65, vgg11: 4.17, resnet18: 37.85, mobilenetv2: 7.97}
+        proving_time_s: {mnist: 15, lenet5: 6, vgg11: 30, resnet18: 270, mobilenetv2: 60}
+      - mode: Groth16 + embedded weights
+        constraints_m: {mnist: 1.57, lenet5: 1.69, vgg11: 7.67, resnet18: 12.0, mobilenetv2: 31.8}
+        proving_time_s: {mnist: 8.30, lenet5: 8.70, vgg11: 56.4, resnet18: 87.5, mobilenetv2: 230.0}
+      - mode: Groth16, weights as signals (estimated)
+        constraints_m: {mnist: 3.51, lenet5: 2.08, vgg11: 11.1, resnet18: 49.0, mobilenetv2: 37.8}
+        proving_time_s: {mnist: 25, lenet5: 15, vgg11: 80, resnet18: 350, mobilenetv2: 270}
 
   - id: safetynets
     name: SafetyNets
@@ -628,6 +894,15 @@ inference:
       Foundational. Linear-prover-time sumcheck for 2D convolution (asymptotically faster
       than computing the convolution directly) and an O(N) sumcheck for FFT. 1264x faster
       than prior schemes. Also proves accuracy over a public dataset (20 images).
+
+      STILL THE FASTEST PROVER ON SMALL MODELS, FIVE YEARS ON. Bionetta (Table 4) re-measures
+      zkCNN on a 16-thread Xeon and finds it proving LeNet5 in 1.05 s and VGG11-mini in 4.10 s --
+      beating Bionetta's own 3.75 s and 7.70 s. Bionetta only overtakes it above roughly 2M
+      parameters (its Fig. 6), and cannot beat it below that. What zkCNN pays for that prover is
+      the thing GKR always pays: proofs of 23-43 kB against Bionetta's 0.88 kB, and verification
+      of 0.3-1.45 s against 10-20 ms. It also cannot run ResNet18 or MobileNetV2 at all in
+      Bionetta's harness (unsupported operators). The trade has not changed since 2021; only the
+      models have.
     benchmarks:
       - model: VGG16
         params: 15000000
@@ -1137,11 +1412,80 @@ inference:
     authors: []
     authors_verified: false
     proof_system: Halo2 (Plonkish arithmetization of ONNX graphs)
-    numbers_source: null
+    hardware: "Intel Xeon E5-2665 (16 threads @ 3.10 GHz), 350 GB RAM -- Bionetta's machine, not ezkl's"
+    # THIRD-PARTY numbers, and this is a provenance case the header did not previously cover.
+    # `primary` in this file means "we read it in a PDF we hold", and we did -- but the PDF is a
+    # COMPETITOR'S. ezkl has no paper and therefore no self-reported benchmark to check these
+    # against. See numbers_note. Do not launder these into prose as "ezkl reports".
+    numbers_source: primary
+    numbers_note: >-
+      EVERY NUMBER BELOW WAS MEASURED BY BIONETTA (arXiv:2510.06784v2, Table 4), not by ezkl.
+      Bionetta picked the models, picked the hardware, and is the system being flattered by the
+      comparison. They are recorded here because they are the ONLY primary-source ezkl benchmarks
+      in this corpus -- ezkl has no paper -- and because a baseline that everyone cites and nobody
+      measures is exactly how a field ends up with a folk ranking. Cite them as "Bionetta measured
+      ezkl at ...", never as "ezkl reports ...".
     notes: >-
-      Not a paper, but the de facto baseline that Jolt Atlas, NANOZK and others benchmark
+      Not a paper, but the de facto baseline that Jolt Atlas, NANOZK, Bionetta and others benchmark
       against. On nanoGPT (per Jolt Atlas): 237s proving, >400s key generation, 0.34s verify.
-    benchmarks: []
+
+      WHAT THE BIONETTA NUMBERS DO TO THE STANDARD STORY ABOUT HALO2. The received account -- ours
+      included, on the proof-systems page -- is that PLONKish is the slow-prover/fast-verifier
+      option, and that you tolerate its prover because kilobyte proofs and millisecond verification
+      are what make on-chain settlement possible at all. As configured by ezkl and measured by
+      Bionetta, that second half is simply not true: the proofs run to hundreds of kilobytes, the
+      verification key reaches tens of megabytes, and VERIFICATION TAKES SECONDS TO TENS OF SECONDS.
+      None of that goes on a chain. Halo2 can of course be configured for small proofs; the point
+      is that the toolchain people actually deploy is not, and nobody had published the numbers.
+      Groth16 (Bionetta, ZEN, vCNN) is the line that actually delivers the constant-size proof and
+      the cheap verifier -- at the price of a per-circuit trusted setup.
+    benchmarks:
+      - model: MNIST MLP
+        params: 2000000
+        proving_time_s: 1310
+        proof_size_mb: 0.127
+        verification_time_s: 5.40
+        peak_ram_gb: 21.15
+        proving_key_gb: 8.30
+        verification_key_mb: 4.10
+      - model: LeNet5
+        params: null
+        proving_time_s: 535
+        proof_size_mb: 0.127
+        verification_time_s: 2.00
+        peak_ram_gb: 5.45
+        proving_key_gb: 2.10
+        verification_key_mb: 1.10
+      - model: VGG11-mini
+        params: null
+        proving_time_s: 2650
+        proof_size_mb: 0.478
+        verification_time_s: 9.70
+        peak_ram_gb: 41.85
+        proving_key_gb: 17.00
+        verification_key_mb: 8.10
+      - model: ResNet18
+        params: null
+        proving_time_s: 6840
+        proof_size_mb: 0.180
+        verification_time_s: 25.30
+        peak_ram_gb: 103.50
+        proving_key_gb: 34.00
+        verification_key_mb: 17.00
+      - model: MobileNetV2
+        params: null
+        proving_time_s: 14320
+        proof_size_mb: 0.175
+        verification_time_s: 40.60
+        peak_ram_gb: 203.95
+        proving_key_gb: 76.00
+        verification_key_mb: 37.00
+        proving_time_note: >-
+          Four hours to prove one MobileNetV2 forward pass, in 204 GB of RAM, for a proof that
+          takes 40 seconds to verify. Bionetta proves the same network in 24.5 seconds on the same
+          machine and 23 seconds on an iPhone. That is the widest single gap in this corpus, and
+          it is not a protocol result -- most of it is that Bionetta's model is public, so its
+          weights are circuit constants and its linear layers cost nothing.
 
   - id: range-arithmetic
     name: Range-Arithmetic

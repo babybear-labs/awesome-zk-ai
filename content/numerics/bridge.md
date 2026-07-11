@@ -7,8 +7,8 @@ lede: >-
   islands -- they rest on the same seabed. Three papers are cited by both, and all three
   are MPC numerics primitives. The traffic runs one way, and it does not pass through
   the middle of either literature.
-papers: [garg-fp, zklp, archer-ieee, secfloat, prob-truncation, hao-et-al, zkpot-garg, range-arithmetic, deepprove, zkgpt, zkllm, zkpytorch, jolt-atlas, zip, iron, bolt, ciphergpt, nimbus, bootstrapping-fhe]
-status: draft
+papers: [garg-fp, zklp, archer-ieee, secfloat, prob-truncation, hao-et-al, zkpot-garg, deepprove, zkgpt, zkllm, zkpytorch, jolt-atlas, zip, bionetta, iron, bolt, ciphergpt, nimbus, bootstrapping-fhe]
+status: reviewed
 ---
 
 The headline finding of this SoK's citation graph has survived every enlargement of the corpus:
@@ -47,7 +47,7 @@ part of that problem first — [[secfloat]], SIRNN and the Catrina–Saxena fixe
 2010 — and the ZK world has been quietly drawing on it while ignoring everything the same authors
 built on top.
 
-{{ table:numerics_primitives }}
+{{ papers:numerics_primitives }}
 
 ## What "crossing" actually looks like
 
@@ -56,16 +56,24 @@ load-bearing.
 
 **[[hao-et-al]] (USENIX Security '24) is a zero-knowledge paper built on an MPC math library.** It
 proves softmax, GELU, division and reciprocal square root in ZK — the exact operator set the rest
-of this repo is fighting. Its digit-decomposition protocol, its exponential strategy, and its
-Goldschmidt iteration all come from SIRNN, and it says so:
+of this repo is fighting. Its exponential protocol is inspired by SIRNN's digit-decomposition idea,
+its reciprocal-square-root initial approximation cites SIRNN, and it inherits SIRNN's
+hyperparameters — but the digit-decomposition building block is its own, and it explicitly rejects
+SIRNN's Msnzb construction as too costly before re-deriving one. (The Goldschmidt iteration it uses
+is attributed to Goldschmidt's 1964 thesis and to the MPC line generally, not to SIRNN.) The
+borrowing is real but selective, and the paper says so:
 
-:::quote{src="Hao et al." sec="§4, footnote 3 — reference [47] is SIRNN"}
+:::quote{src="Hao et al." sec="§2.2, Novel table lookup-based protocols — reference [47] is SIRNN"}
 This function is currently explored in secure multi-party computation (MPC) works [47]. In their
 protocol, the input x is decomposed into several digits x0 , . . . , xk−1 , and the Msnzb is
-computed on each xi of these digits.
+computed on each xi of these digits. Finally, the output corresponds to y = Msnzb(xi ) + i · d if xi
+≠ 0 and x j > 0 for all j > i, where d is the bitlength of each digit. Although this method can be
+directly migrated to the ZK-based evaluation, utilizing our digital decomposition and table lookup
+protocols, the cost is significantly high due to the requirement of multiple Msnzb, comparison, and
+multiplication operations.
 :::
 
-It inherits SIRNN's *hyperparameters* too, which is about as deep as borrowing goes:
+The *hyperparameter* inheritance is the most literal part of it:
 
 :::quote{src="Hao et al." sec="§7.2, Results of mathematical functions"}
 In our protocols, we set the parameters following prior work [47], i.e., the number of iterations
@@ -78,7 +86,7 @@ MPC-in-the-head, so it needs a fixed-point MPC protocol as its engine, and it ta
 Catrina–Saxena secure-truncation construction. The consequence lands in the place this section
 cares about most: the numerics substrate *chooses its field*.
 
-:::quote{src="zkPoT (Garg et al.)" sec="§6, Implementation"}
+:::quote{src="zkPoT (Garg et al.)" sec="§7, Implementation and Evaluation"}
 All arithmetic is implemented over a 128-bit ($p = 2^{128} − 45 * 2^{40} + 1$) prime field. The
 larger field size is required by the secure truncation protocol for fixed-point arithmetic (see
 Section 2.4). We expect that finding a way to avoid this and instead using a 64-bit field would
@@ -100,7 +108,7 @@ literatures genuinely touch, they touch through the acknowledgements section.
 related work walks the MPC line — Aliasgari, Kamm, [[archer-ieee]], Pullonen–Siim, [[secfloat]] —
 and then turns to the ZK one, treating them as two lines on one problem:
 
-:::quote{src="ZKLP (Ernstberger et al.)" sec="§2, Related Work"}
+:::quote{src="ZKLP (Ernstberger et al.)" sec="§6, Related Works — Floating-Point Secure Computing"}
 In [25], Rathee et. al construct standard compliant functionalities for 2PC with dedicated
 optimizations. While providing better efficiency, they can only achieve partial compliance with
 IEEE 754, but subnormal values and NaNs are not considered. Another line of research focuses on
@@ -109,7 +117,7 @@ proving floating-point computations using ZKPs.
 
 And it states the asymmetry outright, without seeming to notice it is stating it:
 
-:::quote{src="ZKLP (Ernstberger et al.)" sec="§1, Introduction — reference [25] is SecFloat"}
+:::quote{src="ZKLP (Ernstberger et al.)" sec="§4, Zero Knowledge Location Privacy — Representing the Transformation as Constraints; reference [25] is SecFloat"}
 Efficient algorithms for emulating accurate trigonometric functions are known for
 Two-Party-Computation [25]. However, we are not aware of any optimizations that lead to accurate
 and efficient in-circuit trigonometric approximations for SNARKs.
@@ -135,6 +143,7 @@ mention — body or bibliography — of the three shared nodes:
 | [[zkpytorch]] | compiler, Llama-3 | **none** |
 | [[jolt-atlas]] | ONNX prover | **none** |
 | [[zip]] | high-precision inference | **none** |
+| [[bionetta]] | client-side CNN prover | **none** |
 | [[hao-et-al]] | proves *operators*, not models | SIRNN (body, load-bearing) |
 | [[zkpot-garg]] | uses MPC as its engine | SecFloat, SIRNN (body) |
 | [[zklp]] | *is about* floating point | SecFloat, Archer (body) |
@@ -142,18 +151,30 @@ mention — body or bibliography — of the three shared nodes:
 
 The four that cross are the four that sit at the *edge* of the ZK column: two are about arithmetic
 itself, one proves operators rather than models, and one is a ZK system whose engine is literally
-an MPC protocol. **Every paper at the centre of the verifiability column — the ones that actually
-prove transformers — reaches into nothing.** They rediscover digit decomposition, piecewise
-approximation and range-checked truncation from first principles, in a field where a math library
-for exactly those operations has existed since 2021.
+an MPC protocol. **Every paper at the centre of the verifiability column reaches into nothing.**
+They rediscover digit decomposition, piecewise approximation and range-checked truncation from
+first principles, in a field where a math library for exactly those operations has existed since
+2021.
+
+[[bionetta]] is the newest entry in that table and the cleanest demonstration of the pattern,
+because it does not merely fail to cite the numerics literature — **it redoes it.** Appendix C of a
+December 2025 technical report derives, from scratch, the error bound for multiplying two
+fixed-point numbers:
+
+$$\varepsilon_\rho := \left|D_{2\rho}\big(\hat{x}\hat{y}\big) - xy\right| \;\le\; 2^{-\rho}\beta + 2^{-2\rho}$$
+
+That is a foundational result in the [[secfloat]] / [[prob-truncation]] line. The paper contains
+zero occurrences of "MPC", "homomorphic", "SIRNN", "Cheetah" or "SecFloat". Four years after a
+library shipped that does exactly this, a team building a **deployed** system proved it again by
+hand — and, on the evidence of the bibliography, did not know there was anything to look up.
 
 ## Is the one-way traffic real, or an artifact of our corpus?
 
 This is the question the finding lives or dies on, and it deserves a hostile reading. Our graph
-holds twenty-one verifiability papers against five privacy papers. A four-to-one imbalance will
-manufacture a directional result from pure chance: more ZK papers means more chances for a ZK→MPC
-edge, and fewer MPC papers means fewer chances for the reverse. **Counting edges cannot settle
-this.**
+holds several times more verifiability papers than privacy papers (the live counts are on the
+citation-graph page). An imbalance that large will manufacture a directional result from pure
+chance: more ZK papers means more chances for a ZK→MPC edge, and fewer MPC papers means fewer
+chances for the reverse. **Counting edges cannot settle this.**
 
 So I did not count edges. I ran a test that is immune to corpus size, because it is a property of
 each document on its own: **does this paper contain the word "zero-knowledge" — or "SNARK", or
@@ -180,14 +201,15 @@ Three caveats, and I would not want the finding cited without them.
 **Chronology explains part of it.** SIRNN (2021), [[archer-ieee]] (2021), Cheetah (2022) and
 [[secfloat]] (2022) mostly predate the zkML transformer systems. [[iron]] (2022) *could not* have
 cited [[deepprove]] (2026). A "recent ZK cites older MPC" pattern is partly just the arrow of time.
-What survives that objection is the recent end: [[bolt]] (S&P '24), [[nimbus]] (NeurIPS '24) and
-[[bootstrapping-fhe]] (2026) are contemporaneous with or later than [[zkllm]], [[zkgpt]] and
-[[deepprove]], and cite none of them. And [[prob-truncation]] (AAAI '25) is an analysis of
-*truncation* — the shared problem, at the shared layer, published late — and it does not contain
-the word "zero-knowledge".
+What survives that objection is the recent end: [[bolt]] (S&P '24) and [[nimbus]] (NeurIPS '24) are
+contemporaneous with [[zkllm]] (CCS '24) and do not cite it, and [[bootstrapping-fhe]] (2026) is
+contemporaneous with [[deepprove]] and cites nothing in the zkML line. And [[prob-truncation]]
+(AAAI '25) is an analysis of *truncation* — the shared problem, at the shared layer, published
+late — and it does not contain the word "zero-knowledge".
 
-**Selection explains part of it.** All five of our privacy papers are private *transformer
-inference* systems. That is a genre with no reason to cite a prover. An MPC paper on verifiable or
+**Selection explains part of it.** All five privacy papers that appear in the graph are private
+*transformer inference* systems — we hold no PDF for the private-training entries, so they
+contribute no edges. That is a genre with no reason to cite a prover. An MPC paper on verifiable or
 maliciously-secure computation would plausibly cite ZK work heavily, and we hold none. The honest
 scope of the claim is therefore narrow: *private-transformer-inference papers do not read zkML*.
 It is **not** "MPC does not read ZK", and we have no evidence for the broader statement.
@@ -225,7 +247,8 @@ uninhabited.
 Two experiments, neither expensive:
 
 1. **Point [[hao-et-al]] at the private-inference operators.** It proves exponential, reciprocal
-   and reciprocal-square-root in ZK using SIRNN's decomposition. [[nimbus]] approximates exactly
+   and reciprocal-square-root in ZK using digit decomposition and table lookups. [[nimbus]]
+   approximates exactly
    those functions in 2PC using a distribution-aware fit. Neither has looked at the other's error
    analysis, and they are approximating the same curves on the same models.
 2. **Ask whether [[zklp]]'s result changes the 2PC picture too.** ZKLP shows that lookup arguments

@@ -7,8 +7,8 @@ lede: >-
   have not harmonised their vocabulary either. They use different words for the same
   operation, the same word for different operations, and each has words the other simply
   lacks. This is the translation table.
-papers: [deepprove, zkgpt, zkllm, zkpytorch, jolt-atlas, zip, safetynets, zkcnn, hao-et-al, zklp, garg-fp, secfloat, prob-truncation, archer-ieee, iron, bolt, ciphergpt, nimbus, bootstrapping-fhe, mystique, lu-et-al, zkpot-garg, zkml-kang, ezkl, zktorch, artemis, spagkr, zkaudit, zkml-survey]
-status: draft
+papers: [deepprove, zkgpt, zkllm, zkpytorch, jolt-atlas, zip, hao-et-al, zklp, secfloat, prob-truncation, iron, bolt, ciphergpt, nimbus, bootstrapping-fhe, mystique, lu-et-al, zkml-kang, ezkl, zktorch, zkml-survey]
+status: reviewed
 ---
 
 ## Why a glossary is a finding here
@@ -76,11 +76,11 @@ collapsing them is exactly the sloppiness this SoK exists to attack.
 
 | Concept | Verifiability (zkML) calls it | Privacy (MPC / 2PC / FHE) calls it | How equal, really |
 |---|---|---|---|
-| Squeeze a wide accumulator back down after a multiply | **requantization** ([[deepprove]]), **rescale** ([[zkgpt]], [[zkllm]], [[jolt-atlas]]) | **truncation** ([[prob-truncation]], [[ciphergpt]], [[nimbus]], SIRNN) | **Same kernel.** Both are a floor-division by a power of two. zkML wraps it in an extra affine map. |
-| Round *less often* by merging adjacent seams | **constraint fusion** ([[zkgpt]]); **delayed requantization** ([[deepprove]]); rebase only at node boundaries ([[jolt-atlas]]) | **fused truncation-and-upcast** ([[nimbus]]) | **Same move, four names.** Independently invented on both sides. |
-| The precision knob that trades accuracy for cost | **quantization bit width**; scale **and zero-point** | **fixed-point scale** $Q_{m.f}$, and the **ring size** | **Same role, different generality.** The zero-point is zkML's alone. |
+| Squeeze a wide accumulator back down after a multiply | **requantization** ([[deepprove]]), **rescale** ([[zkgpt]], [[zkllm]]) | **truncation** ([[prob-truncation]], [[ciphergpt]], [[nimbus]], SIRNN) | **Same kernel.** Both are a floor-division by a power of two. zkML wraps it in an extra affine map. |
+| Round *less often* by merging adjacent seams | **constraint fusion** ([[zkgpt]]); **delayed requantization** ([[deepprove]]) | **fused truncation-and-upcast** ([[nimbus]]) | **Same move, three names.** Independently invented on both sides. |
+| The precision knob that trades accuracy for cost | **quantization bit width**; scale **and zero-point** | **fixed-point scale** (a single global fractional scale), and the **ring size** | **Same role, different generality.** The zero-point is zkML's alone. |
 | Keep the weights from the counterparty | **commitment** to the weights (KZG, BaseFold) | **secret-sharing** / homomorphic **encryption** of the weights | **Both hide. Only one binds.** See below — this row is the 2x2. |
-| The counterparty might cheat | **soundness** against a **malicious prover** — assumed on day one | **malicious security** — the goal none of the five systems reach; all assume **semi-honest** | **Not the same property.** See below. |
+| The counterparty might cheat | **soundness** against a **malicious prover** — assumed on day one | **malicious security** — the goal none of the five systems reach; the four 2PC systems assume **semi-honest**, and the FHE one only that the **server cannot decrypt** | **Not the same property.** See below. |
 | The two parties actually deployed | **prover** (holds the model) / **verifier** (holds the prompt) | **server** (holds the model) / **client** (holds the prompt) | **The same two parties.** Different guarantee purchased. |
 | Make a non-polynomial computable | **lookup argument** ([[zkllm]]'s `tlookup`, Lasso); piecewise polynomial ([[zip]]) | piecewise polynomial fitted by **minimax / Remez** ([[bolt]]); spline + LUT ([[ciphergpt]]); **functional bootstrapping** ([[bootstrapping-fhe]]) | **Converged strategy, one-sided theory.** See below. |
 | "The cost" | **prover time**, proof size, peak prover memory | **communication** (bytes) and **rounds**; for FHE, **bootstraps** | **No conversion exists.** Neither literature's benchmark can be expressed in the other's units. |
@@ -155,7 +155,7 @@ prover is the default assumption** — it is what the system is *for*. The word 
 
 **Malicious (active) security** is a property of a *protocol*: simulation-based security that
 survives a party deviating arbitrarily, covering privacy *and* correctness. In the privacy column
-it is an **aspiration, not a baseline** — every system in [the private-inference
+it is an **aspiration, not a baseline** — every 2PC system in [the private-inference
 section](private-inference/) assumes a semi-honest counterparty, which the
 [threat-models page](threat-models/) shows is the single most load-bearing assumption they make.
 
@@ -191,8 +191,10 @@ approximant, deriving a trigonometric Remez algorithm to find it, on the argumen
 ($L^\infty$) error is the right metric when one bad activation ruins the run.
 
 Neither *minimax* nor *Remez* appears in [[deepprove]], [[zkgpt]], [[zkllm]], [[zkpytorch]],
-[[jolt-atlas]] or [[zip]]. On the ZK side the words occur only in [[zklp]] — which is,
-predictably, [one of the four papers that reads both literatures](bridge/).
+[[jolt-atlas]] or [[zip]]. Among the ZK *systems* we hold, the words occur only in [[zklp]] —
+which is, predictably, [one of the four papers that reads both literatures](bridge/). The one other
+ZK-side hit is secondhand: [[zkml-survey]] records "Remez-style approximations" in the older
+verifiable-training systems VeriML and zkMLaaS, whose PDFs we do not hold.
 
 **Part of that absence is entirely justified, and it is worth saying so.** A zkML lookup table over
 a quantized domain is not an approximation at all: it is *exact* on every input in the table, so
@@ -350,7 +352,9 @@ would be the same sin as a false equivalence, one level up.
   2x2. Nobody in either literature uses it, because [nobody in either literature is looking at the
   other one](graph/).
 
-:::gap  What we would not assert
+## What we would not assert
+
+:::gap
 A false row in a translation table is worse than a missing one, so here is what we considered and
 **rejected**:
 

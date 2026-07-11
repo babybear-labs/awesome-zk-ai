@@ -7,7 +7,7 @@ lede: >-
   aggregated honestly. Read one by one, the pattern is unmissable -- and so is the gap: not
   one of them binds an update to the data it was supposedly computed from.
 papers: [prio, eiffel, rofl, acorn, risefl, byzsfl, zkfl, trusted-model-aggregation, provefl, kaizen, optimum-vicinity]
-status: draft
+status: reviewed
 ---
 
 {{ papers:verifiable_federated_learning }}
@@ -26,7 +26,11 @@ removed from the aggregate rather than merely detected. The clients act as verif
 SNIP-style proofs plus Shamir secret sharing. This is the system that best states the problem the
 cell exists to solve, and it is the most flexible answer to it — but note carefully that the
 predicate is a *free parameter*. EIFFeL will faithfully enforce whatever predicate you can write.
-It does not tell you which predicate makes your model safe, and no such predicate is known.
+It does not tell you which predicate makes your model safe, and no such predicate is known. The
+flexibility is not free. Client and server computation are both quadratic in the client count and
+linear in the update dimension, and the evaluation stops well short of federated-learning scale on
+both axes — read any headline timing for this system together with the model size it was measured
+at.
 
 **[[rofl]]** — zero-knowledge range proofs enforcing L2 / L∞ norm bounds on client updates, over
 commitments to the encrypted updates. The paper's own phrase is *attestable robustness*, which is
@@ -35,9 +39,12 @@ constraint is a robustness heuristic, not a correctness statement. The cost is a
 vector entry, which is why this cell has a communication problem.
 
 **[[acorn]]** — input validation for secure aggregation, proving L0 / L2 / L∞ bounds on client
-inputs, with substantially cheaper client computation than the prior Bell et al. protocol. Same
-claim shape as RoFL, better constants, from the Google group that also produced
-[[optimum-vicinity]].
+inputs. It is really three protocols and they must be kept apart: the base secure-aggregation
+protocol (RLWE-SecAgg) is where the client-computation speedup over the prior Bell et al. protocol
+comes from, and it involves no zero knowledge at all. The ZK input-validation layer bolted on top
+is cheap in *bytes* — the paper's gain over prior ZK validation such as RoFL is in client
+communication, at comparable computation cost. Same claim shape as RoFL, far better communication
+constants, from the Google group that also produced [[optimum-vicinity]].
 
 **[[risefl]]** — targets exactly the cost that makes RoFL expensive: the ZK overhead of
 per-entry commitments. We have not read it, so we cannot say what it gives up to get there, and

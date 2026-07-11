@@ -3,10 +3,10 @@ title: Threat models -- who learns what
 section: private-inference
 order: 20
 lede: >-
-  All five systems assume a semi-honest counterparty, all of them make the model
-  architecture public, and none of them hide the output. The FHE one is not even
-  playing the same game as the other four. Read the assumptions before the numbers.
-papers: [iron, ciphergpt, bolt, nimbus, bootstrapping-fhe]
+  The four 2PC systems all assume a semi-honest counterparty and all make the model
+  architecture public; none of them hide the output. The FHE one states no threat model
+  at all and is not even playing the same game. Read the assumptions before the numbers.
+papers: [iron, ciphergpt, bolt, nimbus, bootstrapping-fhe, zkaudit]
 status: draft
 ---
 
@@ -21,8 +21,10 @@ adjacent, which we get to below.
 
 ## Assumption 1: the adversary is semi-honest
 
-Every system in this section is proved secure against a **semi-honest** (honest-but-curious)
-adversary. This is the single most load-bearing sentence on the page.
+Every 2PC system in this section -- [[iron]], [[bolt]], [[ciphergpt]] and [[nimbus]] -- is proved
+secure against a **semi-honest** (honest-but-curious) adversary. This is the single most
+load-bearing sentence on the page. ([[bootstrapping-fhe]] states no adversary model at all; see
+below.)
 
 :::quote{src="Iron" sec="§2.1, Threat Model"}
 Same as prior works [14, 17], we consider an honest-but-curious adversary that passively corrupts
@@ -32,8 +34,8 @@ weights or inference inputs) via analyzing the data it receives.
 :::
 
 [[nimbus]] and [[bolt]] state the same assumption, and [[bolt]] is unusually candid about *why*:
-the client has to trust the server somewhat because the server is providing the service, and
-semi-honest protocols are the only ones that are fast enough. Both halves of that are honest, and
+the parties have to trust each other to some extent because the server is providing the inference
+service, and semi-honest performance is much more practical. Both halves of that are honest, and
 both are worth taking seriously rather than dismissing. But the consequence is unambiguous. **A
 server that deviates from the protocol is outside the model.** It can compute a different
 function, return garbage, return a competitor's cheaper model's answer, or run a backdoored set
@@ -67,11 +69,12 @@ packing, the ciphertext parameters, and the communication pattern. "Hiding the a
 not a knob you can turn later.
 
 Second -- and this is the interesting one -- **the privacy column makes the architecture public
-while hiding the weights, which is exactly the configuration the verifiability column needs to
-defend against the Fiat--Shamir attack on GKR** (see the Fiat–Shamir/GKR attack; the mitigation
-is to pin the circuit rather than only the weights, which is what zkAudit does). The two columns
-have converged on the same public/private split from opposite directions, and neither cites the
-other for it.
+while hiding the weights, which is structurally the same split the verifiability column *may* need
+in order to stay clear of the Fiat--Shamir/GKR attack's precondition** (see
+[proof systems](/zk-inference/proof-systems/); the mitigation is to pin the circuit rather than
+only the weights, which is what [[zkaudit]] does). Whether that is sufficient has not been analysed
+on either side. The two columns have converged on the same public/private split from opposite
+directions, and neither cites the other for it.
 
 ## Assumption 3: the output leaks, by construction
 
@@ -79,8 +82,8 @@ Both [[bolt]] and [[iron]] state that they do not attempt to hide what can be in
 inference result itself, and both point at differential privacy as the orthogonal tool for that.
 This is correct and unavoidable -- the result has to be useful to somebody -- but it means model
 extraction and membership inference against the served model are *entirely* out of scope. A client
-who queries a private-inference service a few hundred thousand times learns roughly what a client
-querying a plaintext API learns. 2PC protects the individual query, not the model.
+who queries a private-inference service repeatedly learns whatever a client querying a plaintext
+API learns. 2PC protects the individual query, not the model.
 
 ## Assumption 4: the "client" is not a phone
 
@@ -144,7 +147,7 @@ private-transformer literature. Flagging it as unexamined rather than as a probl
 |---|---|---|---|---|---|
 | Setting | 2PC | 2PC | 2PC | 2PC | FHE, non-interactive |
 | Adversary | semi-honest | semi-honest | semi-honest | semi-honest | server cannot decrypt |
-| Model architecture | public | public | public | public | public |
+| Model architecture | public | public | public | public | not stated |
 | Model weights | hidden from client | hidden from client | hidden from client | hidden (encrypted, held by client) | never leave the server |
 | Client input | hidden from server | hidden from server | hidden from server | hidden from server | hidden from server |
 | Output correctness | **not guaranteed** | **not guaranteed** | **not guaranteed** | **not guaranteed** | **not guaranteed** |

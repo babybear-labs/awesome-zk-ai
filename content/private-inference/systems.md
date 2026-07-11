@@ -6,18 +6,19 @@ lede: >-
   Four 2PC systems in a single lineage, each citing and reimplementing its predecessor,
   plus one FHE outlier that is not in the same setting and should not be put in the same
   ranking. Read one by one, with attention to what the evaluation is quietly doing.
-papers: [iron, ciphergpt, bolt, nimbus, bootstrapping-fhe]
-status: draft
+papers: [iron, ciphergpt, bolt, nimbus, bootstrapping-fhe, jolt-atlas, zkgpt]
+status: reviewed
 ---
 
 {{ papers:secure_inference_2pc }}
 
 This cell has an unusually clean genealogy. [[iron]] starts it; [[ciphergpt]], [[bolt]] and
 [[nimbus]] each cite their predecessors and each claim to beat them; [[bootstrapping-fhe]] cites all
-four and then does something else entirely. Every one of them is semi-honest, every one of them
-publishes the model architecture, and not one of them produces a proof — see the threat-models page
-for what that does and does not leave you with. What follows is what each actually contributed, and
-where its evaluation is doing work its text does not acknowledge.
+four and then does something else entirely. All four 2PC systems are semi-honest and let the client
+learn the model architecture; [[bootstrapping-fhe]] states no threat model at all. And not one of the
+five produces a proof — see the threat-models page for what that does and does not leave you with.
+What follows is what each actually contributed, and where its evaluation is doing work its text does
+not acknowledge.
 
 {{ table:secure_inference_2pc }}
 
@@ -87,10 +88,11 @@ should be said plainly.
 
 *Where the evaluation is doing work:* **word elimination.** [[bolt]]'s headline communication
 advantage over [[iron]] is not purely a protocol result. It ranks input tokens by their attention
-scores, obliviously bitonic-sorts them, and *discards the below-median half of the sequence* before
-the encoder stack runs. It is oblivious, it is disclosed, and its accuracy cost is small — but it is
-a **model change**, not a protocol improvement, and it is responsible for a large fraction of the
-reported factor. To [[bolt]]'s enormous credit it reports every number both with and without word
+scores, obliviously bitonic-sorts them, and *discards the below-median half of the sequence*, so most
+downstream components see an input matrix with half the rows. It is oblivious, it is disclosed, and
+its accuracy cost is small — but it is a **model change**, not a protocol improvement, and it is
+responsible for a large fraction of the reported factor. To [[bolt]]'s enormous credit it reports
+every number both with and without word
 elimination, so the honest protocol-versus-protocol row is right there in the paper. It is not the
 row that gets quoted downstream.
 
@@ -107,10 +109,12 @@ encoder depth and minimizes the *probability-weighted* error, which lets it coll
 single quadratic piece where prior work used two pieces of degree three and six — and then, because
 low-degree polynomials accumulate less fixed-point error, to shrink the ring and the scale as well.
 
-*Where the evaluation is doing work:* three things. First, its baseline is **BumbleBee**, not
-[[bolt]] and not [[iron]], so its headline factor is not commensurable with [[bolt]]'s. Second, the
-paper's own §1 states an end-to-end range that silently merges two different baselines; §7 separates
-them, and the abstract's figure is the correct one. Third — and this is a deployment fact rather than
+*Where the evaluation is doing work:* three things. First, its *headline* factor is measured against
+**BumbleBee** (it reports a separate, larger factor against [[iron]] in the same sentence, and
+compares with [[bolt]] only on the non-linear approximations, in an appendix), so the number is not
+commensurable with [[bolt]]'s Iron-relative factor. Second, the paper's own §1 states an end-to-end
+range that silently merges two different baselines; §5.2 separates them, and the abstract's figure is
+the correct one. Third — and this is a deployment fact rather than
 an evaluation trick — the client must now *store the entire encrypted model on disk* and stream it in
 as layers are consumed. [[nimbus]] is candid that 2PC clients were already server-class machines, but
 its design makes the client heavier still.
@@ -141,9 +145,8 @@ the entire reason to tolerate FHE's compute.
 benchmarked model is **BERT-DyT** — LayerNorm has been replaced by Dynamic Tanh and the network
 distilled from BERT — so the operator that is hardest to evaluate homomorphically has been designed
 out rather than approximated. And the reported per-query cost is **amortized over a batch of
-sequences**: it is a throughput figure, where every 2PC number in the table above is a
-single-inference latency figure. A NISTI service answering one query at a time does not see it, and
-the paper does not claim it would.
+sequences**: it is a throughput figure, where the 2PC systems all cost out a single inference. A
+NISTI service answering one query at a time does not see it, and the paper does not claim it would.
 
 :::gap  Nobody has read the systems this line actually descends from
 Four names carry most of the load in these five papers' related work and none of them is in this

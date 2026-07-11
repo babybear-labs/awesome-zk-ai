@@ -6,8 +6,8 @@ lede: >-
   Inference, testing and training all prove that a computation ran correctly. These
   systems prove that a model *is* something — fair, licensed, uncensored, compliant. That
   is a fourth objective, and the prior surveys do not have a slot for it.
-papers: [fairproof, fairzk, oath, zkaudit, zk-software-auditing, e2e-ai-pipeline-verifiability, zkprov, zkml-survey, zkcnn, deepprove, zkml-kang]
-status: draft
+papers: [fairproof, fairzk, oath, zkaudit, zk-software-auditing, e2e-ai-pipeline-verifiability, zkprov, zkml-survey, zkcnn, deepprove, zkml-kang, eiffel, prio]
+status: reviewed
 ---
 
 The canonical taxonomy of verifiable machine learning has three objectives, and
@@ -52,8 +52,7 @@ cryptographic: it derives fairness bounds from the **model parameters plus aggre
 input statistics**, rather than by proving inference over a specific dataset. That is a
 different mathematical object — a bound on the model's behaviour, not a transcript of its
 behaviour — and it is why FairZK reaches a parameter count that inference-based fairness
-proofs cannot (see the table; the prover-time improvement over prior work is large enough
-that it is a change of kind, not degree).
+proofs cannot (see the table).
 
 **It proves the wrong thing**, because a property proved *on a dataset* is a property of
 the dataset as much as of the model. Prove fairness on the evaluation set and a malicious
@@ -142,7 +141,7 @@ narrower approach cannot express.
 
 zkAudit also makes a design choice with consequences well beyond this page: **the weights
 stay secret but the architecture is public.** That is exactly the mitigation
-the Fiat–Shamir open question turns on. A system that pins its
+[the Fiat–Shamir/GKR question](/zk-inference/proof-systems/) turns on. A system that pins its
 architecture is a system whose prover did not get to choose its circuit.
 
 [[zkprov]] is the cheap version of the same idea — prove *which dataset* a model was
@@ -171,7 +170,7 @@ not read it, and we do not know whether anyone has built it.
 ## The people are the same people
 
 Worth noticing, because it explains why these clusters share techniques. [[fairproof]] is
-Yadav, Roy Chowdhury, Boneh, Chaudhuri — Roy Chowdhury also wrote EIFFeL, and Boneh
+Yadav, Roy Chowdhury, Boneh, Chaudhuri — Roy Chowdhury also wrote [[eiffel]], and Boneh
 co-authored Prio, both in [federated aggregation](/federated/). [[fairzk]] includes Yupeng
 Zhang, who co-authored [[zkcnn]] and [[deepprove]]. [[zkaudit]] comes from the group behind
 [[zkml-kang]].

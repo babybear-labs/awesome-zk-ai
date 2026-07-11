@@ -149,7 +149,26 @@ unsubstituted `METHOD` placeholder — treat with suspicion.
 | [ZKTorch](https://arxiv.org/abs/2507.07031) | arXiv · Jul 2025 | *(compiler)* | — | up to 6× faster than ZKML | ≥3× smaller | — |
 | [SpaGKR](https://eprint.iacr.org/2024/1018) | ePrint · Jun 2024 | Sparse / ternary nets | — | 45× (sparsity) × ~5× (ternary) | — | — |
 | [ezkl](https://github.com/zkonduit/ezkl) | *(no paper)* | ONNX graphs | — | 237 s on nanoGPT | — | 0.34 s |
+| [ezkl](https://github.com/zkonduit/ezkl) ⚠ | *(measured by Bionetta)* | MobileNetV2 | — | 14 320 s | 175 KB | **40.6 s** |
+| [Bionetta](https://arxiv.org/abs/2510.06784) 🔁 | Rarimo · Dec 2025 | MobileNetV2 | — | 24.5 s (**23 s on an iPhone**) | **0.88 KB** | 18 ms |
+| [Bionetta](https://arxiv.org/abs/2510.06784) 🔁 | Rarimo · Dec 2025 | ResNet18 | — | 14.1 s (**13.6 s on an iPhone**) | **0.88 KB** | 15 ms |
 | [SafetyNets](https://arxiv.org/abs/1706.10268) 🔓 | NeurIPS '17 | FcNN-3-Quad (TIMIT) | — | **+5% over plain execution**§ | 8 KB | 8–82× faster than local exec |
+
+🔁 **Inverted threat model — do not read this row as beating the rows above it.** Bionetta proves a
+**public** model on a **private** input, client-side. Because the weights are public they compile
+into the R1CS as *constants*, and R1CS charges nothing for multiplication by a constant — so every
+linear layer costs **zero constraints** and ResNet18 drops from 37.85M constraints to 1.16M. Most
+of the gap between this row and the ezkl row above it is not a proof-system result; it is a weaker
+security property, showing up in the constraint count. It supports **no softmax and no attention**,
+so it cannot run a transformer at all.
+
+⚠ Third-party numbers, measured by Bionetta (Table 4) on its own hardware and its own models. They
+are the only primary-source ezkl benchmarks we have — ezkl has no paper — and they contradict the
+thing everyone says about Halo2: as ezkl actually ships, proofs are hundreds of kilobytes,
+verification keys reach 37 MB, and verification takes **seconds to tens of seconds**. None of that
+settles on-chain. Notably, ddkang/zkml — the *other* Halo2 system, same hardware, same models —
+verifies in 12–23 ms with 5–7 KB proofs. The two most-deployed PLONKish toolchains do not have the
+same verifier profile and the literature treats them as one row.
 
 🔓 **Not zero-knowledge** — SafetyNets buys *integrity only*; the model and input are not hidden.
 § The paper reports proving cost as *overhead over unverified execution*, and never states
@@ -263,6 +282,47 @@ a public dataset, so it straddles inference and testing.
 show the trajectory: vCNN needed 8 hours for VGG16 where zkCNN needs 88 seconds. Mystique's
 ~1 GB proofs are the price of a VOLE-based interactive protocol; ZEN's 192-byte proofs are the
 price of Groth16's trusted setup and a much smaller model.
+
+**[Bionetta](https://arxiv.org/abs/2510.06784)** — Zakharov, Kurbatov, Sdobnov, Soukhanov et al.
+(Rarimo / Distributed Lab). arXiv, Dec 2025. Technical report, not peer-reviewed, and the most
+interesting thing in this file that no academic paper cites. **Read the threat model first: it is
+the inverse of everyone else's.** The model is *public*, the input is *private*, and the *client*
+is the prover — on a phone, proving that their face matches an enrolled template. The library's own
+README says it in a warning box the paper never does: *"not intended for private model weights +
+public input proving."*
+
+Three ideas, and the last two travel well beyond the paper.
+
+*Circuit-embedded weights.* R1CS charges nothing for multiplication by a **constant**. If the model
+is public, the weights need not be signals — they compile into the constraint system as constants,
+and every linear layer costs **zero constraints**. ResNet18: 37.85M → 1.16M constraints, 270 s →
+14 s. Proving cost then depends on exactly one quantity, the number of non-linearity calls — which
+is the sum-check line's conclusion, reached from the opposite direction, in a proof system that has
+nothing in common with it.
+
+*UltraGroth.* A LogUp lookup argument **inside Groth16**, which should be impossible: LogUp needs a
+challenge drawn after the witness is committed, and Groth16 has no rounds. UltraGroth adds them —
+partition the witness, hash each segment's commitment to derive the next segment's challenge, carry
+the extra commitments in the proof. Cost: one extra pairing (4 instead of 3) and one hash. Payoff:
+a ReLU's range check drops from *b* constraints to *b/w*. Proved complete, sound and ZK in GGM+ROM.
+This is a real cryptographic contribution sitting in a vendor tech report.
+
+*The rescale seam is free.* ReLU already bit-decomposes its input to get a sign — and once you hold
+the bits, a right shift is just dropping the low ones. So the precision cut, which every other
+system in this file pays for at every seam, **costs nothing when it rides on a ReLU you were already
+paying for**. zkGPT (constraint fusion), DeepProve (delayed requantization) and Jolt Atlas (i64
+rebase) all fuse seams to make them *cheaper*; Bionetta fuses the seam into a range check it had
+already bought. It is the fourth independent discovery of the same insight and it cites none of the
+other three.
+
+What to distrust: **no softmax, no attention, no LayerNorm** — the ReLU family and nothing else,
+which is exactly the family its free-rescale trick works on, and which is why it cannot run a
+transformer. Per-circuit trusted setup, so retraining means a new ceremony. And its Circom is
+**not public** (`codegen/generator.py` clones a private `bionetta-circom`), which means the range
+checks — [the entire proof](#quantization-the-hidden-variable) — are the one part of a *deployed
+biometric system* nobody outside can read. Its §4.3 prices ReLU at *b + 1* constraints, the shipped
+SDK prices it at exactly 255 = 254 + 1 for BN254, and 255 leaves no room for a canonicity check on
+a 254-bit decomposition over a 254-bit prime. That may be fine. It is worth somebody checking.
 
 ---
 
@@ -753,6 +813,27 @@ depends on how much of the circuit is non-linear. A GKR system whose cost is dom
 attention matmuls may see little benefit; a lookup-heavy system like Jolt Atlas should see a
 lot.
 
+#### …and two systems now say the knob is the wrong one
+
+Set against all of the above, there are two measurements pointing the other way, from two systems
+that have never heard of each other, and together they are the most interesting open problem in
+this file.
+
+- **DeepProve**: raising the bit width by four bits costs **well under 1%** of prover time, because
+  the *number* of lookup tables barely changes.
+- **Bionetta**: raising the precision costs **exactly nothing**. It never quantizes to a narrow
+  integer at all — values stay full BN254 field elements with ρ fractional bits, and a
+  non-linearity costs *b + 1* constraints where *b* is the width of the **field** (254), not the
+  width of the value. Its measured relative error against TensorFlow falls from **5.2 × 10⁻³ at
+  ρ = 15 to 9.4 × 10⁻⁷ at ρ = 60** — four orders of magnitude of accuracy — with **no change to the
+  constraint count**.
+
+If the cost tracks the *number of rounding seams* rather than their *width*, then a decade of
+aggressive quantization has been trading model accuracy for a saving that was never there. And
+precision is not free either — it is paid for in **seams**, since a larger ρ overflows sooner and
+forces more frequent rescales. That reframes the whole knob: *bits are cheap; seams are expensive;
+and a seam that lands on a ReLU is free.* Directly testable. Nobody has tested it deliberately.
+
 ### Consequence for the graph
 
 Bit width belongs on the chart. Concretely: plot tok/min vs. parameter count, **size or shade
@@ -823,6 +904,16 @@ Before plotting tok/min against parameter count, four things need resolving:
    expensive 16 bits. So the DeepProve-vs-zkGPT gap is *partly* quantization (12 vs 16 bits),
    partly context (512 vs 32), and partly what is proven (full sequence vs one token) — the
    protocol contribution is smaller than 63× and nobody has isolated it.
+6. **The threat model is a confounder, and it is the biggest one.** Bionetta's linear layers cost
+   **zero constraints** because its model is public and R1CS charges nothing for a constant. That
+   single property is worth **32× on ResNet18** — more than any protocol result in this file. Any
+   chart that puts a public-model prover next to a private-model prover is plotting two different
+   security guarantees on one axis and calling the difference "performance". Bionetta's own Table 5
+   separates the two effects cleanly; nobody else does, and nobody will quote the table that does.
+7. **Is bit width the expensive knob at all, or is it the number of seams?** Two independent
+   systems now say seams. See
+   [Does lower precision really mean faster proving?](#does-lower-precision-really-mean-faster-proving)
+   — this is the cheapest high-value experiment in the field and it is still unrun.
 
 ### Highest-value next actions
 

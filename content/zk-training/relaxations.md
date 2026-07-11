@@ -7,8 +7,8 @@ lede: >-
   weakness -- it is a design choice, and it is the only reason any of these systems exist.
   But each one leaves a specific adversary standing, and the papers name their relaxation
   far more often than they name the adversary it lets through.
-papers: [verilora, veriml, zkmlaas, optimum-vicinity, kaizen, zkdl, zkboost, zkpot-garg, zkprov, zkaudit, rofl, acorn, eiffel, opml, proof-of-sampling, tee-confidential-llm, lightweight-sampling-inference, fairzk]
-status: draft
+papers: [verilora, veriml, zkmlaas, optimum-vicinity, kaizen, zkdl, zkboost, zkpot-garg, zkprov, zkaudit, rofl, acorn, eiffel, opml, proof-of-sampling, optimistic-tee-rollups, lightweight-sampling-inference, fairzk]
+status: reviewed
 ---
 
 This page has one job: for each way of making proof-of-training tractable, state precisely what a
@@ -122,15 +122,19 @@ claim a regulator wants — but they must not be read as a discount zkPoT.
 
 *Taken by:* the federated cell — [[rofl]], [[acorn]], [[eiffel]] and the rest.
 
-The statement becomes: *this update is well-formed and within a norm bound.*
+The statement becomes: *this update satisfies a public predicate the server chose* — in practice a
+norm bound ([[rofl]], [[acorn]]), though [[eiffel]] admits any per-client robustness test as the
+predicate, including a cosine-similarity check.
 
-**What the adversary can still do.** Submit a poisoned update that satisfies the bound. Norm bounds
-constrain magnitude; they say nothing about direction. There is a whole page on this in the
-federated section — it is the defining gap of that cell, not a footnote to this one.
+**What the adversary can still do.** Submit a poisoned update that satisfies whatever predicate was
+chosen. Where the predicate is a norm bound it constrains magnitude and says nothing about
+direction; where it is a stronger ML defence, the residual is that defence's own false-negative
+rate, which the cryptography does not improve. There is a whole page on this in the federated
+section — it is the defining gap of that cell, not a footnote to this one.
 
 ## R7 — Prove nothing; make cheating expensive instead
 
-*Taken by:* [[opml]], [[tee-confidential-llm]], [[proof-of-sampling]]. Not a zkPoT relaxation so
+*Taken by:* [[opml]], [[optimistic-tee-rollups]], [[proof-of-sampling]]. Not a zkPoT relaxation so
 much as an exit from the cell, and often the right one.
 
 **What the adversary can still do.** Whatever the economic or hardware assumption permits: cheat
@@ -141,7 +145,11 @@ plotting them against proving times would be a category error.
 
 ## R8 — Prove a quantized run of a quantized model
 
-*Taken by:* everyone, silently, because finite fields have no floats.
+*Taken by:* every system that has to commit a real number to a field element. It is not always
+taken silently — [[zkpot-garg]] names it as a limitation of its own techniques (piecewise-linear
+activations, fixed-point instead of floating-point arithmetic), and [[zkboost]] reports a
+fixed-point variant of XGBoost — but no entry in the training table records a bit width, which is a
+finding in its own right.
 
 **What the adversary can still do.** Nothing, directly — this is not an exploitable relaxation so
 much as a *scope* relaxation, and it is the one most likely to be forgotten at deployment. The
@@ -151,12 +159,16 @@ different stack, the proof covers a different object than the one answering quer
 between "the weights in the proof" and "the weights in production" is not cryptographic in any
 system we have seen; it is operational.
 
-:::gap  Nobody states the residual
-Across the ten entries in the training table, we can find no paper summary that states, in the
-form above, what an adversary can still do under its relaxation. Papers state what they prove.
-Almost none state what they leave standing. If you are writing in this space, that section — call
-it "what an honest proof still permits" — is the cheapest possible contribution and the one an
-auditor will read first.
+:::gap  Almost nobody states the residual
+The one training paper whose PDF we hold is also the one exception: [[zkpot-garg]] concedes in
+passing that its definition assumes the commitment to the data and randomness is honestly generated
+by the trainer, sketches a signature-based fix for the fine-tuning-over-a-foundation-model case,
+and then omits it — and it files its fixed-point and piecewise-linear approximations under a
+paragraph titled "Limitations and Extensions of Our Techniques". Nowhere else in the training table
+does a summary state, in the form above, what an adversary can still do under the relaxation.
+Papers state what they prove. Almost none state what they leave standing. If you are writing in
+this space, that section — call it "what an honest proof still permits" — is the cheapest possible
+contribution and the one an auditor will read first.
 :::
 
 ## The composition nobody has built
@@ -165,5 +177,7 @@ Read as a menu, the relaxations are complementary rather than competing. R4 (pro
 and R5 (prove the data) are duals; R1 (prove the fine-tune) needs an attested base model; R4 needs
 an audit of the committed data to mean anything. The end-to-end claim a buyer actually wants —
 *this served model came from this attested base, fine-tuned on this licensed, audited data, with
-this optimizer, and here is the artifact* — is a composition of at least three of these, and no
-system in this repo composes even two.
+this optimizer, and here is the artifact* — is a composition of at least three of these.
+[[zkaudit]] composes two — ZKAudit-T proves the model was trained by SGD on a committed dataset,
+and ZKAudit-I then audits arbitrary properties of that hidden data and the resulting weights — but
+nothing we have read binds either half to an attested base model.

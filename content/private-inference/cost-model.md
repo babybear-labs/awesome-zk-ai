@@ -7,8 +7,8 @@ lede: >-
   runtime is a property of the protocol alone -- it is a function of a network the
   paper chose, a fixed-point scale the paper chose, and in one case a model the paper
   modified. The headline number of the whole line is a competitor's reimplementation.
-papers: [iron, bolt, ciphergpt, nimbus, bootstrapping-fhe, deepprove, zkgpt]
-status: draft
+papers: [iron, bolt, ciphergpt, nimbus, bootstrapping-fhe, deepprove, zkgpt, zkllm]
+status: reviewed
 ---
 
 In the verifiability column, cost means prover time and prover memory: a single machine grinds,
@@ -28,10 +28,12 @@ Two consequences follow, and they are the whole deployment story.
 **First, the non-linears end up owning the bill.** [[bolt]] publishes a per-layer communication
 breakdown of [[iron]] alongside its own, and the shape of it is the argument of this whole
 literature. In [[iron]], the matmuls and the non-linears both cost gigabytes per encoder layer.
-[[bolt]]'s HE matmul then cuts the linear layers by three orders of magnitude -- and once you have
-done that, **essentially the entire remaining bill is Softmax, GELU and LayerNorm.** GELU is the
-largest single line item in both systems. This is the exact inverse of the plaintext cost model,
-where the matmuls are almost all of the FLOPs and GELU is a rounding error.
+[[bolt]]'s HE matmul then collapses the matmuls -- by nearly three orders of magnitude on the two
+big ciphertext-ciphertext products (Linear 1 and Softmax x V), and by roughly one order of
+magnitude on the ciphertext-plaintext ones -- and once you have done that, **essentially the entire
+remaining bill is Softmax, GELU and LayerNorm.** GELU is the largest single line item in both
+systems. This is the exact inverse of the plaintext cost model, where the matmuls are almost all of
+the FLOPs and GELU is a rounding error.
 
 **Second, latency matters as much as bandwidth,** because the round count is dominated by the same
 operators and each round pays a network round-trip. A linear layer in [[bolt]] costs a couple of
@@ -44,8 +46,9 @@ is not a property of a protocol. It is a function of two numbers the paper picke
 ## Which network did they pick? Different ones.
 
 - [[iron]] evaluates in a **LAN** setting only.
-- [[bolt]] evaluates in one LAN and **four** WAN settings, and its headline comparison against
-  [[iron]] is drawn from a WAN setting.
+- [[bolt]] evaluates in one LAN and **four** WAN settings, and while its headline speedup over
+  [[iron]] is a range across all five, the [[iron]] *run-time* that gets quoted downstream is taken
+  from one of its WAN settings, not from its LAN.
 - [[ciphergpt]] follows SIRNN and [[iron]] and evaluates in a **LAN** setting.
 - [[nimbus]] evaluates in a LAN and a WAN setting -- neither of which is the same WAN [[bolt]] used.
 - [[bootstrapping-fhe]] has essentially no network cost at all, so the axis does not apply.
@@ -99,20 +102,25 @@ are claims about reimplementations, not about protocols.
 moving from a large ring and a large scale to a smaller ring and a smaller scale -- which it can
 only do because its low-degree polynomials accumulate less fixed-point error. [[bolt]] benchmarks
 [[iron]] at a scale it says [[iron]] could not actually use. Precision is a free parameter that
-trades accuracy for communication, exactly as bit width trades accuracy for proving time in
-[[deepprove]] and [[zkgpt]]. The zkML section of this SoK calls that the hidden variable. It is the
-same variable, and the private-inference papers do not normalise for it either.
+trades accuracy for communication, exactly as bit width is the free parameter behind the zkML
+numbers -- [[zkgpt]] and [[deepprove]] run at different widths, and neither throughput figure is
+bit-width-normalised. (The trade does not even always show up in prover time: [[deepprove]] reports
+that widening its quantization level is nearly free, which is precisely why the width has to be
+stated rather than read off the runtime.) The zkML section of this SoK calls that the hidden
+variable. It is the same variable, and the private-inference papers do not normalise for it either.
 
 **Some of the speedup is a smaller model.** [[bolt]]'s word elimination ranks input tokens by their
 attention scores -- summing the query-key product across an axis gives a per-token score -- and
-obliviously discards the below-median half before the encoder stack runs, using a bitonic sort so
-that neither party learns which tokens went. It is a good idea, it is done obliviously, it is
-disclosed, and its accuracy cost against the floating-point baseline is small. It is also *not a
-protocol improvement*: it is a model change, and it is responsible for a large fraction of
-[[bolt]]'s reported communication advantage over [[iron]] -- as [[bolt]]'s own
-no-word-elimination row makes plain. The honest protocol-versus-protocol comparison is that row,
-and it is not the one that gets quoted downstream. Likewise, [[bootstrapping-fhe]]'s benchmarked
-network is a *distilled* BERT-DyT, not BERT.
+obliviously discards the below-median half. It cannot run ahead of the encoder stack, because the
+score does not exist until an attention layer has been computed: the elimination prunes that
+layer's input matrix and its attention result together, using a bitonic sort so that neither party
+learns which tokens went, and the remaining encoder layers then run on half the tokens. It is a
+good idea, it is done obliviously, it is disclosed, and its accuracy cost against the
+floating-point baseline is small. It is also *not a protocol improvement*: it is a model change,
+and it is responsible for a large fraction of [[bolt]]'s reported communication advantage over
+[[iron]] -- as [[bolt]]'s own no-word-elimination row makes plain. The honest
+protocol-versus-protocol comparison is that row, and it is not the one that gets quoted downstream.
+Likewise, [[bootstrapping-fhe]]'s benchmarked network is a *distilled* BERT-DyT, not BERT.
 
 :::gap  Nobody reports the three numbers that would make this comparable
 To compare two private-inference systems you need, in the same row: (1) communication in bytes
@@ -125,12 +133,12 @@ other paper's. That is not a lapse by any individual author; it is a missing con
 ## FHE: the bill is compute, and it is paid in bootstraps
 
 [[bootstrapping-fhe]] moves the entire cost to the server's CPU. The client encrypts once and
-decrypts once, so communication collapses from the 2PC systems' hundreds of gigabytes to the size
-of a few ciphertexts -- a difference of many orders of magnitude, and the whole reason anyone
-tolerates FHE's compute. The dominant cost becomes bootstrapping, which is the operation that
-refreshes a ciphertext's noise budget; [[bootstrapping-fhe]] reports that it accounted for the
-majority of runtime in the prior state of the art, and its contribution is to make each bootstrap
-do more work rather than to do fewer of them.
+decrypts once, so communication collapses from the tens to hundreds of gigabytes the 2PC systems
+move to the size of a few ciphertexts -- a difference of many orders of magnitude, and the whole
+reason anyone tolerates FHE's compute. The dominant cost becomes bootstrapping, which is the
+operation that refreshes a ciphertext's noise budget; [[bootstrapping-fhe]] reports that it
+accounted for the majority of runtime in the prior state of the art, and its contribution is to
+make each bootstrap do more work rather than to do fewer of them.
 
 Two caveats before you read its runtime as a like-for-like win over 2PC:
 
@@ -148,10 +156,11 @@ None of which makes the result less impressive. It makes it a different result.
 
 The verifiability column has proved inference for models in the billions of parameters
 ([[zkllm]]-class work, and [[deepprove]] on GPT-2 and Gemma-class models with real decode
-throughput). This column is stuck at BERT-base, roughly 110M parameters, and the reason is
-structural rather than incidental: prover cost in a sum-check system is roughly linear in the
-circuit and can be sharded across machines, while 2PC communication is linear in the activations
-*and* has to cross a network in sequence. You cannot shard your way out of a round trip.
+throughput). This column has not gone past the BERT / GPT-2 scale -- [[ciphergpt]] benchmarks
+GPT-2, the rest are BERT variants -- and the reason is structural rather than incidental: prover
+cost in a sum-check system is roughly linear in the circuit and can be sharded across machines,
+while 2PC communication is linear in the activations *and* has to cross a network in sequence. You
+cannot shard your way out of a round trip.
 
 That, and not any claim about which guarantee is more valuable, is why the two columns of the 2x2
 have such different scale stories. They are limited by different physics.

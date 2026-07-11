@@ -7,8 +7,8 @@ lede: >-
   descend from the same idea, and their headline numbers are not on the same axis. This page
   takes them one at a time and asks the only question that survives: what did this paper
   actually contribute that did not exist before it?
-papers: [safetynets, zkcnn, zkllm, zkgpt, zkpytorch, deepprove, jolt-atlas, spagkr, mystique, hao-et-al, lu-et-al, vcnn, zen, zkml-kang, zktorch, artemis, zip, range-arithmetic, nanozk, ezkl]
-status: draft
+papers: [safetynets, zkcnn, zkllm, zkgpt, zkpytorch, deepprove, jolt-atlas, spagkr, mystique, hao-et-al, lu-et-al, vcnn, zen, zkml-kang, zktorch, artemis, zip, range-arithmetic, nanozk, ezkl, bionetta]
+status: reviewed
 ---
 
 The [inference table](./) ranks these systems on throughput. That ranking is close to meaningless
@@ -23,7 +23,7 @@ Read the lineages first, because they explain the numbers:
 |---|---|---|
 | **Sum-check / GKR** | The network is an arithmetic circuit; prove it with sum-check. | Non-linearities and rounding seams. Matmuls are nearly free. |
 | **Lookups** | Don't arithmetise anything; look it up. | Table size — exponential in bit width. |
-| **R1CS / SNARK compilers** | Lower the model into a general-purpose circuit and use an off-the-shelf prover. | Constraint count, and commitment consistency. |
+| **R1CS / SNARK compilers** | Lower the model into a general-purpose circuit and use an off-the-shelf prover. | Constraint count, and commitment consistency. *Unless the weights are public, in which case the linear layers cost nothing at all.* |
 | **VOLE / designated-verifier** | Give up the public, reusable proof; buy a very fast prover. | Communication — and you cannot publish the result. |
 
 {{ table:inference }}
@@ -32,7 +32,7 @@ Read the lineages first, because they explain the numbers:
 
 ## I. The sum-check line
 
-This is the highway. Six of the systems here are one lineage, and each inherited its predecessor's
+This is the highway. Seven of the systems here are one lineage, and each inherited its predecessor's
 machinery.
 
 ### SafetyNets (2017) — the root
@@ -62,7 +62,8 @@ the entire subsequent literature — lookup arguments, `tlookup`, `zkAttn`, resu
 the story of *removing that one restriction*.
 
 And the number to carry forward: its prover overhead over unverified execution is a few percent.
-Nothing since comes within three orders of magnitude. That gap is not only the price of
+Nothing since comes close — and no other system on this page reports an overhead figure against
+unverified execution at all, so the gap cannot be sized. That gap is not only the price of
 zero-knowledge and commitments, which SafetyNets does not provide — a large part of it is [the
 price of rounding](/numerics/), which SafetyNets does not pay because a polynomial network has no
 rescale seam at all.
@@ -91,8 +92,9 @@ a 2025 transformer prover and find an affine quantizer with a zero-point, you ar
 ### zkLLM (2024) — the first transformer, and the first honest look at softmax
 
 [[zkllm]] (Sun, Li, Zhang) is where the lineage meets the transformer, and it remains the largest
-model anyone has proven end to end. Its two contributions are both about the thing sum-check cannot
-do.
+model anyone has run a prover over — though the paper says only that it proves "the entire inference
+process", never how many tokens that covers, so the end-to-end reading is ours, not theirs. Its two
+contributions are both about the thing sum-check cannot do.
 
 **`tlookup`** is a parallelized lookup argument for non-arithmetic tensor operations — the general
 machinery for handing a prover an operation that is not a polynomial. **`zkAttn`** is a bespoke
@@ -117,8 +119,8 @@ are three, all of which fall out of one insight.
 The insight, stated plainly in the paper: **rounding introduces range relations, and range
 relations cost more than arithmetic relations.** Once you believe that, the optimization is
 obvious — do less rounding. **Constraint fusion** merges the computation between two adjacent
-rounding operations into a single rounding, generalizing a trick zkCNN and zkPyTorch had used only
-in the narrow convolution→ReLU case.
+rounding operations into a single rounding, generalizing a trick [[zkcnn]] and Kang et al.'s
+trustless-DNN-inference paper had used only in the narrow convolution→ReLU case.
 
 The second contribution is **circuit squeeze**: breaking GKR's layer-by-layer dependency to flatten
 the circuit into a wider, shallower one, which parallelizes. The third is the **result-as-witness**
@@ -239,8 +241,10 @@ Teleportation is also its most honest weakness, and the paper says so: replacing
 bounded — but bounded in *raw output units of a fixed-point representation*, never in model
 accuracy. There is no perplexity number and no task-accuracy number for any model in the paper.
 
-It is also the only system here that takes **zero-knowledge** seriously as a distinct obligation.
-Most of this column is verifiable-but-not-hiding; a raw sum-check transcript leaks the weights.
+It is also one of the few systems here that treats **zero-knowledge** as a distinct obligation to be
+retrofitted rather than a property of the design. Much of the sum-check line is
+verifiable-but-not-hiding — [[safetynets]] buys integrity, not privacy, and [[range-arithmetic]]
+defers privacy to future work — and a raw sum-check transcript leaks the weights.
 Jolt Atlas applies **BlindFold**: every sum-check round polynomial is sent as a Pedersen commitment,
 the sum-check *verifier* is encoded as an R1CS circuit, and that instance is Nova-folded. The
 resulting circuit is logarithmic in the computation proven.
@@ -262,14 +266,15 @@ sensitive to bit width, that omission matters most. Its results are not wrong; t
 ## III. The R1CS / compiler line
 
 The oldest strategy: don't invent a protocol, lower the model into a general-purpose circuit and let
-an off-the-shelf prover handle it. It lost on throughput and won on breadth.
+an off-the-shelf prover handle it. It lost on throughput and won on breadth — and then, in
+December 2025, it won on throughput too, by changing the question.
 
 ### vCNN (2020) and ZEN (2021)
 
 [[vcnn]] encodes convolution with **Quadratic Polynomial Programs** rather than R1CS, attacking the
 constraint blow-up of convolution inside a SNARK. It is mostly of historical interest now — its
-proving time for VGG16 was measured in *hours*, where zkCNN needs seconds — but the trajectory is
-the point.
+VGG16 proving time is *reported* in hours (a survey figure; we do not have the paper), where zkCNN
+needs seconds — but the trajectory is the point.
 
 [[zen]] is the more interesting ancestor, and it made an argument that took the field another five
 years to internalize: **optimize the network, not the prover.** Its backend is off-the-shelf
@@ -315,13 +320,56 @@ because ArgMax and TopK are built from basic blocks with no accumulation support
 [[artemis]] attacks a completely different cost than everyone else on this page, and that is why it
 belongs here. Not the matmuls, not the non-linearities: the **consistency checks between the
 committed model parameters and the circuit that uses them**, which on large models can dominate
-everything else. It cuts commitment-verification overhead on VGG from roughly an order of magnitude
-down to nearly nothing.
+everything else. Artemis *reports* cutting commitment-verification overhead on VGG from roughly an
+order of magnitude down to nearly nothing — a figure we have secondhand, from the survey; we do not
+have the paper.
 
 Apollo is the KZG/white-box variant; Artemis is generic over any homomorphic polynomial commitment,
 so it works in transparent Halo2/IPA settings with no trusted setup. It is the clearest example in
 this SoK of a paper that got a large win by profiling honestly rather than by inventing a new
 argument.
+
+### Bionetta (2025) — free matmuls, if you are allowed to publish the weights
+
+[[bionetta]] is the paper that makes this whole lineage worth re-reading, and it does it with an
+observation so simple it is almost annoying: **R1CS charges nothing for multiplication by a
+constant.** Every system above passes the model weights in as *signals*, and therefore pays a
+constraint for every weight-times-activation product. But it only has to do that because the
+weights are secret. Make the model public and the weights become circuit **constants** — and then
+every matmul, every convolution and every folded BatchNorm costs **zero constraints**. Not cheap.
+Zero.
+
+ResNet18 falls from 37.85M constraints to 1.16M, and from 270 seconds to 14. On an **iPhone**.
+
+Two things follow, and both are larger than the paper.
+
+**The threat model is the dominant term in the cost, and nobody separates it out.** Five years of
+protocol work in the sum-check line — linear-time convolution, `tlookup`, result-as-witness,
+circuit squeeze — buys large constant factors. *Publishing the weights* buys a factor of thirty-two
+by itself. When you read Bionetta's benchmark table beating [[ezkl]] by 580× on proving time, most
+of that is not UltraGroth and not R1CS. It is a weaker security property, showing up in the
+constraint count. To its credit, the paper's own Table 5 isolates the two effects cleanly. It is
+just not the table anyone will quote.
+
+**And it lands on the sum-check line's conclusion from the far side.** GKR says: matmuls are nearly
+free, so the cost is the non-linear seams. R1CS-with-constant-weights says: matmuls are *literally*
+free, so the cost is the non-linear seams. Bionetta's proving time is a function of exactly one
+quantity — the number of non-linearity calls. Two proof systems with nothing in common, the same
+cost model. That agreement is worth more than either benchmark.
+
+Its cryptographic contribution is **UltraGroth**, which puts a LogUp-style lookup argument *inside
+Groth16* — a protocol with no rounds — by splitting the witness into segments and hashing each
+segment's commitment to derive the next one's challenge. One extra pairing, one extra hash. It is
+the most interesting proof-system idea in recent zkML and it is sitting in a vendor tech report
+that no academic paper cites. [Proof systems](./proof-systems/) has the construction.
+
+What to distrust. It supports **no softmax, no attention, no LayerNorm** — the ReLU family and
+nothing else, because the ReLU family is what its free-rescale trick works on. It is not a
+transformer system and its numbers do not belong on the tokens-per-minute axis. Its trusted setup
+is **per-circuit**, so retraining means a new ceremony. And the constraints themselves are not
+public: the SDK ships, the Circom does not, in a system that is deployed for biometric
+authentication. See [the paper page](/papers/bionetta/) for the ReLU sign check we would want
+somebody to look at.
 
 ### ezkl — the toolchain
 
@@ -350,8 +398,9 @@ Anyone who plots Mystique's "proof size" next to zkGPT's is comparing two differ
 And it evaluates non-linear layers as **real IEEE-754 float circuits** rather than quantizing them —
 which is why its accuracy holds across 101 layers, and why no calibration or requantization story
 appears in it at all. It is also the source of the FP32 gate counts that the entire [numerics
-literature](/numerics/) cites when it declares floats infeasible. Its own prover is dominated
-(~70%) by BatchNorm, because of those float conversions.
+literature](/numerics/) cites when it declares floats infeasible. Its own prover is dominated by
+BatchNorm — the paper measures it at "around 70% of time in both cases" — because of those float
+conversions.
 
 ### Hao et al. (2024) and Lu et al. (2024)
 

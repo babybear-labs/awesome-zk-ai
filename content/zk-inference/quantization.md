@@ -6,7 +6,7 @@ lede: >-
   Bit width is a free parameter that trades accuracy for proving speed. Most papers in this
   section do not state theirs. That makes the throughput column a comparison across an
   uncontrolled variable -- and it makes the range check an audit surface.
-papers: [deepprove, zkgpt, zkpytorch, zkllm, jolt-atlas, spagkr, zen, zkcnn, zktorch, safetynets, nanozk, zip]
+papers: [deepprove, zkgpt, zkpytorch, zkllm, jolt-atlas, spagkr, zen, zkcnn, zktorch, safetynets, nanozk, zip, bionetta]
 status: draft
 ---
 
@@ -27,11 +27,15 @@ scheme (affine, `x = S(q - z)`, per-layer scale and zero-point, inherited from [
 and reports the perplexity cost on three named datasets. It is the reference point against
 which the others should be normalized, and it sits at the *high* end of the bit-width range
 — which means it is doing a materially harder job on the lookup and range-check side than a
-lower-precision system, and paying for it in the throughput column.
+lower-precision system. That is not the same as saying its position in the throughput column is
+a bit-width effect: zkGPT is a GKR system, and (see below) bit width barely touches the matmuls.
+Its figure is a single forward pass, derived by us, and it is not commensurable with
+DeepProve's for reasons that have nothing to do with bits.
 
-[[deepprove]] is the other system that states both a bit width and an accuracy delta, and
-it is worth reading closely because its quantization block is the most sophisticated in the
-literature:
+[[deepprove]] states a bit width and an accuracy delta too — and it is the only paper here that
+reports accuracy at *several* bit widths rather than one, which is the only reason the trade-off
+is legible at all. It is worth reading closely because its quantization block is the most
+sophisticated in the literature:
 
 :::quote{src="DeepProve" sec="§5, Experiments"}
 For various maximum sequence lengths, we run inference on the GPT-2 and Gemma 3 models
@@ -44,9 +48,12 @@ pass, scale $s = a / (2^{b-1} - 1)$ where $a = \max(|x_{max}|, |x_{min}|)$ so th
 vanishes; activations clamped to $[-a, a]$; mixed precision, with residual layers given a
 larger bit length; and — the interesting one — **outlier smoothing by orthonormal rotation**,
 $XW = (XM)(M^{\top}W)$, with $M$ absorbed into the previous layer's weights so the
-hard-to-quantize activation tensor is never materialized. DeepProve further states that, unlike
-[[zkgpt]] and [[zktorch]], its scale factors are *not* restricted to powers of two — **a claim
-zkGPT's own text does not support.** Both systems in fact handle arbitrary float scales; they
+hard-to-quantize activation tensor is never materialized. DeepProve further states that its scale
+factors are *not* restricted to powers of two, unlike [[zktorch]]'s. It does **not** level that
+charge at [[zkgpt]]; its complaint there is a fixed scaling factor used *without clamping*, which
+forces a larger lookup table. **Our own reading is that zkGPT's scales are not powers of two
+either**: it approximates the float scale ratio by the nearest fraction $C_1/C_2$, with the
+integers found by search — an arbitrary rational. Both systems handle arbitrary float scales; they
 differ in mechanism, not in generality. The two mechanisms are set side by side in
 [the rescale seam](./numerics/), and the conflict is logged in
 `papers.yml`.
@@ -82,17 +89,22 @@ paper here, which is exactly why it is worth flagging rather than ignoring.
 
 The rest of the field:
 
-- [[zkpytorch]] is the most aggressive, running the lowest weight/activation precision of
-  anyone, with wider intermediates for matmul accumulation and a re-quantization back down
+- [[zkpytorch]] runs the lowest *integer* precision of anyone — [[spagkr]]'s ternary weights are
+  narrower still, but ternary is a structural change rather than a bit-width setting (see below)
+  — with wider intermediates for matmul accumulation and a re-quantization back down
   after each table lookup. Its whole reason for doing so is *field size* — see below. Its
   LLM accuracy claim is a **cosine similarity**, which is a weaker guarantee than perplexity:
   a high cosine similarity can still flip an argmax and change a generated token.
 - [[spagkr]] goes to ternary weights, $\{-1, 0, 1\}$, which eliminates multiplication
   altogether.
-- [[zkllm]], [[zkcnn]], [[zen]] and [[nanozk]] state a scheme but no bit width.
+- [[zkllm]], [[zkcnn]] and [[nanozk]] state a scheme but no bit width.
   [[nanozk]] additionally claims its lookup approximations preserve perplexity *exactly*,
   which is an extraordinary claim in an unreviewed single-author preprint whose abstract
   contains an unsubstituted `METHOD` placeholder. Treat accordingly.
+- [[zen]] never writes its width in a single sentence either, but it is pinned by its own
+  encoding: its networks "work with low precision (e.g. 8-bit) unsigned integers", and packing
+  those weights and activations into a BLS12-381 field element *is* its stranded encoding, so
+  the width is structural rather than incidental.
 - [[jolt-atlas]] states no bit width at all, and for its design that omission matters most.
 
 ## The Jolt Atlas problem
@@ -119,10 +131,15 @@ axis as [[zkgpt]]'s or [[deepprove]]'s.
 
 ## Does lower precision actually mean faster proving?
 
-Directionally yes, and there are two published measurements — [[spagkr]] reports a further
+Directionally yes, but the evidence is thinner than it looks — one measurement, and one that is
+usually mistaken for one. [[spagkr]] is *reported by the ZKP-VML survey* to buy a further
 multiplicative proof-time reduction from going ternary, on top of what its sparsity-aware
-linear layers already buy, and [[zen]] reports a large reduction in R1CS constraint count
-from proof-friendly quantization versus a vanilla encoding.
+linear layers already buy; we have not read SpaGKR, and that figure reaches us secondhand. And
+[[zen]] reports a large reduction in R1CS constraint count from its proof-friendly *encoding* —
+but read that one carefully: ZEN's baseline is a vanilla encoding of the *same* uint8 network, so
+it measures ZEN's circuit tricks, not bit width, and its headline ratio excludes the in-circuit
+commitment that dominates its smaller models (see [ZEN](../papers/zen/)). It is suggestive, not a
+bit-width curve.
 
 But the effect is **not uniform across the circuit**, and this is the part to internalize
 before treating bit width as a single throughput knob.
@@ -162,9 +179,9 @@ Quantized zkML pushes correctness onto **range checks and lookup arguments**. [[
 as a witness and then prove it lies in the correct range. Soundness therefore rests
 *entirely* on those range constraints being complete. An under-constrained range check in a
 result-as-witness design lets a malicious prover assert an arbitrary non-linear output — and
-the the SNARK-vulnerability SoK taxonomy of real SNARK bugs finds under-constrained circuits to be
-both the most common and the most severe class. Combine those two sentences and you have
-where to look first.
+under-constrained circuits are the class SNARK auditors report finding most often. We do not cite
+a count here: no vulnerability taxonomy is in this SoK's corpus yet. Combine those two sentences
+and you have where to look first.
 
 The other half of the surface is the *range itself*. Lookup tables and quantization scales
 are fixed at preprocessing, from a calibration dataset. An activation that falls outside the
@@ -186,20 +203,52 @@ the certified output and the true model's output can diverge — and the proof w
 anyway, because the clamp is inside the statement, not a violation of it.
 
 :::audit  Audit surface
-Three questions to ask any quantized zkML system, none of which any paper here answers:
+Three questions to ask any quantized zkML system. Only DeepProve answers the second; no paper
+here answers the other two:
 
 1. **Is the range check complete?** In a result-as-witness design, a missing constraint on
    the witnessed output of a non-linearity is a total soundness break, not a precision bug.
 2. **What happens to an out-of-calibration activation?** Clamped (the computation silently
    changes), rejected (the prover can be DoS'd by a crafted input), or unprovable (same)?
-   The choice is a security property and it is documented nowhere.
+   The choice is a security property. DeepProve names it — it clamps, and proves the
+   out-of-range case explicitly. Everyone else leaves it undocumented.
 3. **Who chose the calibration set?** In MLaaS the prover is the model owner, so the prover
    chose it. The scales, the tables and the clamps are all downstream of data the verifier
    never sees.
 
-See the quantization audit surface. **No such bug is known in any system listed here.**
+**No such bug is known in any system listed here.**
 This is where we would look, not what we have found.
 :::
+
+## The system with no bit width at all
+
+[[bionetta]] does not appear in the table above, and the reason is the most useful thing it has to
+say about quantization: **it has no bit width in the sense this page has been using the term.**
+
+It does not quantize activations down to 8 or 12 or 16 bits. Every value stays a full BN254 field
+element carrying $\rho$ fractional bits, and the cost of a non-linearity is $b+1$ constraints where
+$b$ is the width of the **field** — 254 — not the width of the value. ReLU has to bit-decompose its
+input to find the sign, and what it decomposes is the field element. It pays for 254 bits whether
+the number in there is worth 15 of them or 60.
+
+The consequence is the sharpest result on this page, and it cuts against the premise the page opens
+with. **Raising the precision costs nothing.** Bionetta measures relative error against TensorFlow
+over $10^5$ random inputs, worst case across five models, and it falls from $5.2\times10^{-3}$ at
+$\rho = 15$ to $9.4\times10^{-7}$ at $\rho = 60$ — four orders of magnitude — with **no change to
+the constraint count**, because the decomposition was over the field element all along.
+
+That is [[deepprove]]'s finding — four more bits costs well under one percent of prover time —
+reproduced in an unrelated proof system by a team that has never heard of it. Two systems now say
+the same thing: *the knob the field has spent a decade turning is not the knob that costs money.*
+What precision actually costs is **seams** — a larger $\rho$ overflows sooner and forces more
+frequent rescales. See [the numerics page](/numerics/) for the argument, and for the open question
+these two jointly sharpen.
+
+The catch is real, and it is the same catch as everywhere else on this page. Bionetta can afford
+to bit-decompose because its rescale rides for free on a ReLU it was already paying for — and it
+can afford *that* only because it supports nothing but the ReLU family. No softmax, no attention,
+no transformer. It is not a refutation of the field's quantization strategy so much as a
+demonstration of what that strategy is buying, and of what it is paying with.
 
 ## The counter-thesis
 
@@ -220,8 +269,8 @@ argument, and why it is a research question rather than a bug, is in
 
 That reframes the whole section. Most of this literature *bends the model to fit the
 prover*: [[safetynets]] restricted activations to quadratics, [[jolt-atlas]] teleports the
-network, [[zkgpt]] relaxes its constraint fusion, [[spagkr]] wants ternary weights. A
-smaller strand *bends the prover to fit the model*: [[deepprove]]'s standard-ML quantization
+network, [[spagkr]] wants ternary weights. A smaller strand
+*bends the prover to fit the model*: [[deepprove]]'s standard-ML quantization
 pipeline (whose authors pointedly note that theirs is the only work to measure accuracy with
 the exact codebase the prover consumes), and [[zip]]'s native floats. The second strand is
 the one that scales to models you did not get to choose.

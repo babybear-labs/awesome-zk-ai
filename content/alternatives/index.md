@@ -8,24 +8,24 @@ lede: >-
   stateable one, for a small fraction of the cost — and for most deployments that is
   the better trade.
 papers: [opml, opp-ai, zk-opml, optimistic-tee-rollups, tee-confidential-llm, proof-of-sampling, proof-of-quality, lightweight-sampling-inference]
-status: draft
+status: reviewed
 ---
 
 This section exists so that the rest of the site cannot quietly assume its own premise.
 
-A zkML prover is orders of magnitude slower than the inference it proves — the overhead
-column in the table below carries the figures. That is a very large bill, and it buys
-something specific: a proof that *anyone* can check, that reveals nothing, that requires
+A zkML prover is orders of magnitude slower than the inference it proves; the
+[inference benchmarks](/zk-inference/) carry the figures. That is a very large bill, and it
+buys something specific: a proof that *anyone* can check, that reveals nothing, that requires
 trusting no hardware and no counterparty, and that stays valid forever without anyone
 staying online. Some deployments need exactly that. Most do not.
 
-The right way to compare the rows below is **not on speed.** It is on the trust
-assumption — what, precisely, must be true for the guarantee to hold, and who is in a
-position to make it false.
+The table below is not about speed. The right way to compare the rows in it is **not on
+speed** at all. It is on the trust assumption — what, precisely, must be true for the
+guarantee to hold, and who is in a position to make it false.
 
 {{ table:alternatives_to_zk }}
 
-## What each row is actually assuming
+## What each approach is actually assuming
 
 **Zero knowledge assumes mathematics.** The verifier needs to believe a hardness
 assumption and a correct implementation. Nobody has to be honest; nobody has to be
@@ -74,14 +74,24 @@ because the name works against comprehension:
 
 Those are not the same claim at three price points. The third is a different claim. **Model
 substitution — the precise attack zkML exists to prevent — is not prevented.** It is made
-*unprofitable for a rational node* by tuning a reward parameter, and the authors concede that a
-cheaper model whose output is good enough gets paid the same.
+*unprofitable for a rational node* by tuning a reward parameter — and the reward function depends
+only on the assessors' scores, so any model that scores the same collects the same payout. The
+authors do not concede this; they *assume* it away, in a hypothesis stipulating that no cheaper
+model is as good as a dearer one.
 
-And the judge is weak. By the paper's own measurement, the cross-encoder's correlation with
-GPT-4 ground-truth quality is **0.12–0.35**, and they acknowledge that "subtle differences on
-accuracy" escape it entirely. **A verification scheme is only as sound as its verifier**, and this
+And the judge is weak.
+
+:::audit  The judge is barely correlated with the thing it judges
+By the paper's own Table 3, the cross-encoder's Pearson correlation with GPT-4 ground-truth
+quality is 0.12 (GPT-3.5), 0.13 (GPT-4), 0.28 (Mistral-7B), 0.35 (Mixtral-8x7b) -- and -0.06 on
+Llama3-70b, i.e. anti-correlated on one of the five models tested.
+:::
+
+The authors are candid about why: they acknowledge that the cross-encoder "is unable to identify
+the subtle difference on the accuracy of the information itself" — which is precisely the failure
+mode you most want to catch. **A verification scheme is only as sound as its verifier**, and this
 one is barely correlated with the thing it is verifying — which is exactly the regime where a
-subtly wrong answer, the failure mode you most want to catch, passes.
+subtly wrong answer passes.
 
 None of that makes it useless. Assessment costs well under a second and consensus settles in
 milliseconds, so for a decentralized *marketplace* — where the real risk is a node collecting fees

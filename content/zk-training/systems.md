@@ -20,7 +20,8 @@ The taxonomy that matters is which clause each one dropped.
 ## Group 1 — Prove every step (and pay for it)
 
 These accept the full claim and attack the cost of composing a proof across a long, sequential
-computation. They are the reference points, and they are all demonstrated on small models.
+computation. They are the reference points, and every one of them we have benchmarks for is
+demonstrated on a small model.
 
 **[[kaizen]]** is the canonical DNN zkPoT. The prover runs mini-batch gradient descent and emits
 a commitment plus a succinct proof at each iteration, recursively composing GKR-style proofs with
@@ -33,24 +34,24 @@ should not pay for the length of a run it did not watch. The prover, of course, 
 training-shaped. `FAC4DNN` aggregates proofs across layers *and across training steps* without
 being constrained by their sequential order, and `zkReLU` gives ReLU and its backward pass a
 bespoke argument rather than a generic one. It runs on GPU and is open source. It is also the one
-entry in the table whose reported proof size is implausible on its face — see the note in
-`papers.yml` and the conflicts page; do not cite that figure without checking the paper.
+entry in the benchmark table on the [previous page](./) whose reported proof size is implausible
+on its face — see the note in `papers.yml`; do not cite that figure without checking the paper.
 
 **[[zkboost]]** is the useful corrective to a deep-learning-shaped field: it is the first zkPoT
 for XGBoost, built from a generic zkPoT template with a VOLE-based instantiation. Gradient-boosted
 trees are what most tabular and financial production models actually are, so this is arguably the
 first zkPoT aimed at a model class someone is currently deploying. It also claims to fix a
 security gap in prior zero-knowledge training proofs — a claim we have not been able to attribute
-to a specific prior protocol, and which is tracked as an open item on the soundness page.
+to a specific prior protocol.
 
 **[[zkpot-garg]]** is the definitional paper (MPC-in-the-head composed with zkSNARKs, streaming-
 friendly), instantiated only for logistic regression. **[[summer]]** targets recursive proofs for
 RNN training and we have not read it.
 
-:::gap  We are reading this group from the outside
-There is no PDF in `references/` for any paper in this section. Every characterisation above
-comes from abstracts, author summaries and the survey's tables. Treat the *mechanisms* as
-reported and the *numbers* as secondhand.
+:::gap  We are reading most of this group from the outside
+We have the PDF for only one paper in this group — [[zkpot-garg]], which has a deep-dive. The
+characterisations of [[kaizen]], [[zkdl]], [[zkboost]] and [[summer]] are read from the outside:
+abstracts, author summaries and the survey's tables.
 :::
 
 ## Group 2 — Prove the result instead of the process
@@ -101,14 +102,15 @@ done with it, or that nothing else was used afterwards.
 under properties: its first phase, `ZKAudit-T`, *is* a zkPoT — it proves the model was trained by
 SGD on a committed dataset — and its second phase audits arbitrary properties of the hidden data
 and hidden weights. Notably, it keeps the weights secret but makes the **architecture public**,
-which is precisely the mitigation the Fiat–Shamir question on the soundness page turns on.
+which is precisely the mitigation the Fiat–Shamir question in [R2 on the relaxations
+page](./relaxations/) turns on.
 
 :::debate  Is Group 5 in this cell at all?
-`papers.yml` files [[zkprov]] under `training:`, so it appears in the table above with no
-benchmark row. We think that is the right call — it competes for the same budget and the same
-buyer as a zkPoT, and pretending it is a different subject is how a survey lets a weak claim
-stand in for a strong one. But it proves nothing about the optimizer, and a reader who skims the
-table could easily miss that.
+`papers.yml` files [[zkprov]] under `training:`, so it appears in the benchmark table on the
+[previous page](./) with no benchmark row. We think that is the right call — it competes for the
+same budget and the same buyer as a zkPoT, and pretending it is a different subject is how a
+survey lets a weak claim stand in for a strong one. But it proves nothing about the optimizer,
+and a reader who skims the table could easily miss that.
 :::
 
 ## What the grouping shows

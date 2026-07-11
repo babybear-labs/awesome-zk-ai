@@ -4,10 +4,11 @@ section: private-inference
 order: 30
 lede: >-
   Matmul is easy and GELU is hard -- in both columns of the 2x2, for different reasons,
-  with different hammers. The MPC papers and the zkML papers are solving the same three
-  operators and have never cited each other once.
-papers: [iron, ciphergpt, bolt, nimbus, bootstrapping-fhe, deepprove, zkgpt, zkllm, jolt-atlas, zkpytorch, safetynets]
-status: draft
+  with different hammers. The five private-inference systems and the LLM provers are solving
+  the same three operators and have never cited each other once, and the one zero-knowledge
+  paper that does reach across proves the operators, not the model.
+papers: [iron, ciphergpt, bolt, nimbus, bootstrapping-fhe, deepprove, zkgpt, zkllm, jolt-atlas, zkpytorch, safetynets, hao-et-al]
+status: reviewed
 ---
 
 Under homomorphic encryption you get addition and multiplication. Under secret sharing you get
@@ -25,22 +26,25 @@ that approximation is what every paper in this section is actually about.
 If that framing sounds familiar it is because it is the same sentence you would write about
 [[zkgpt]] or [[deepprove]]. Hold that thought; the last section of this page is about it.
 
-## Five strategies, in rough historical order
+## Six strategies, in rough historical order
 
 **1. Multi-step lookup tables over OT.** [[iron]] builds Softmax, GELU and LayerNorm out of
 SIRNN's protocol library: a lookup table for $e^{-x}$, another for the reciprocal, then bit-width
 extensions and truncations to keep precision through the composition. The virtue of this approach
-is that it is *numerically precise* -- [[iron]] preserves the plaintext model's accuracy exactly,
-and it is the only system here that can say so without an accuracy table. The cost is that each
-step is an OT invocation, and the steps compose.
+is that it is *numerically precise*: [[iron]]'s protocols, in its own words, "are numerically
+precise, which preserve the model accuracy of plaintext". That is a claim about the protocol, not
+an exactness guarantee -- Iron backs it with a measured accuracy comparison against the plaintext
+model (its Figure 6, plus a sweep over the fractional scale), and the measured loss is not zero.
+The cost is that each step is an OT invocation, and the steps compose.
 
 **2. Piecewise high-degree polynomials.** [[bolt]] replaces the lookup chains with polynomial
 approximations of GELU and the Softmax exponential, exploiting the symmetry and linearity of the
 curves, and adds a Horner-scheme preprocessing trick that roughly halves the multiplication count
 when the coefficients are known in advance. Degree buys accuracy; each degree costs multiplications
-and therefore rounds. [[nimbus]] reports that this generation of work settled on four pieces of
-degree six for GELU and a degree-six Taylor expansion for the exponential -- and that the resulting
-fixed-point error forced everything onto a large ring.
+and therefore rounds. [[nimbus]] reports that the piecewise-polynomial line it measures itself
+against (PUMA, SecretFlow-SPU, BumbleBee -- not [[bolt]]) settled on four pieces of degree six for
+GELU and a degree-six Taylor expansion for the exponential -- and that the resulting fixed-point
+error forced everything onto a large ring.
 
 **3. Splines: piecewise *linear*, with a lookup to select the piece.** [[ciphergpt]] observes that
 GELU is flat on the left, linear on the right, and only genuinely curved in a narrow band around
@@ -100,7 +104,7 @@ Now put the two columns of the 2x2 next to each other.
 |---|---|---|
 | **GELU** | lookup argument over a table sized by bit width ([[zkllm]]'s `tlookup`); result-as-witness plus a range proof ([[zkgpt]]); a lookup table baked into the ONNX op ([[jolt-atlas]]) | LUT chain over OT ([[iron]]); high-degree piecewise polynomial ([[bolt]]); spline + LUT on the high bits ([[ciphergpt]]); distribution-weighted low-degree piecewise ([[nimbus]]); functional bootstrapping ([[bootstrapping-fhe]]) |
 | **Softmax / exp** | bespoke attention argument ([[zkllm]]'s `zkAttn`); lookup tables ([[zkpytorch]]); result-as-witness ([[zkgpt]]) | OT lookup for $e^{-x}$ and reciprocal ([[iron]]); Taylor/piecewise polynomial ([[bolt]], [[nimbus]]); FBS ([[bootstrapping-fhe]]) |
-| **LayerNorm** | proved via auxiliary witnesses -- quotient plus remainder-less-than-divisor ([[zkpytorch]]) | reciprocal-sqrt via OT ([[iron]]); folded into HE weights ([[bolt]]); **replaced by Dynamic Tanh** ([[bootstrapping-fhe]]) |
+| **LayerNorm** | auxiliary witnesses -- division as quotient plus remainder-less-than-divisor, and a piecewise lookup table for the RMSNorm square root ([[zkpytorch]]) | reciprocal-sqrt via OT ([[iron]]); folded into HE weights ([[bolt]]); **replaced by Dynamic Tanh** ([[bootstrapping-fhe]]) |
 | **Matmul** | cheap: sum-check is linear in the gate count | cheap: HE packing, or one round of secret-shared multiplication |
 | **Where cost actually lands** | prover time and memory on the non-linears | communication rounds, or bootstraps, on the non-linears |
 
@@ -115,7 +119,8 @@ look like the calibration set.
 
 :::audit  The calibrated range is the shared attack surface
 In a zkML lookup design, an activation outside the calibrated table range is not merely inaccurate
--- it is unprovable, or worse, provable under an under-constrained range check
+-- it is unprovable, or clamped (a silent modification of the model, which is [[deepprove]]'s
+answer), or worse, provable under an under-constrained range check
 (see the quantization audit surface). In [[nimbus]], an activation outside the fitted band gets
 whatever the constant or linear tail piece returns, silently, with no error signal and no bound
 that anyone has published. The two failure modes are duals of each other and neither literature
@@ -126,26 +131,30 @@ That is a claim about *privacy*, and it is correct. It is not a claim about what
 does on an out-of-distribution input, which is what an auditor would ask.
 :::
 
-## The citation graph is empty between them
+## The citation graph is almost empty between them
 
 This is not a subtle observation about intellectual affinity. It is a fact about the reference
 lists, and you can see it in the graph.
 
 {{ chart:citations }}
 
-Two connected components, zero edges between them:
+Two clusters, with no edge between their systems. They are not two islands -- they touch at the MPC
+primitives both reach down to, Cheetah and SIRNN, which [[hao-et-al]] cites from the verifiability
+side (see /numerics/bridge/):
 
 - **Proving inference** cites GKR, Lasso, Jolt, zkCNN, Mystique, EZKL, and each other.
   [[deepprove]] cites [[zkgpt]], [[zkllm]], [[zkpytorch]]; [[jolt-atlas]] cites [[deepprove]].
 - **Private inference** cites Cheetah, SIRNN, THE-X, BumbleBee, and each other. [[nimbus]] cites
   [[bolt]], [[ciphergpt]], [[iron]]; [[bootstrapping-fhe]] cites all four of the 2PC systems.
 
-Not one paper in either cluster cites a paper in the other. They are working the same two cells of
+No paper in either cluster cites a *system* from the other. They are working the same two cells of
 the same row of the same table, on the same three operators, on the same model (BERT/GPT-2 class),
 and they are publishing at the same venues.
 
-:::gap  Nobody has tried the obvious transfer
-Concrete questions that fall out of the disconnection, none of which anyone has asked in print:
+:::gap  The transfer has been tried once, and only at the operator level
+[[hao-et-al]] ports SIRNN's digit-decomposition lookup protocols into ZK and proves GELU, Softmax
+and normalization with them -- but it proves *operators*, never a model, and no zkML system that
+proves a transformer cites it (see /numerics/bridge/). The concrete questions are still open:
 
 - **Does [[nimbus]]'s distribution-aware fitting improve zkML lookup tables?** A zkML table is
   sized by the *range* it must cover, and its cost is exponential in the input bit width. Spending
