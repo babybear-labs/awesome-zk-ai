@@ -1,0 +1,81 @@
+# Citation/dependency graph, built by scanning the PDFs we have (references/) with pdftotext.
+# edge A -> B  means: paper A's text mentions/cites paper B.
+# Proxy: a mention anywhere in A (body or reference list). Not a hand-verified citation.
+# Sources scanned: the 12 PDFs in references/. External building-block nodes have no source text.
+citations:
+  deepprove:  # DeepProve
+    - ezkl  # EZKL
+    - gkr  # GKR
+    - jolt  # Jolt (zkVM)
+    - lasso  # Lasso
+    - mystique  # Mystique
+    - zkcnn  # zkCNN
+    - zkgpt  # zkGPT
+    - zkllm  # zkLLM
+    - zkpytorch  # zkPyTorch
+  jolt-atlas:  # Jolt Atlas
+    - deepprove  # DeepProve
+    - ezkl  # EZKL
+    - gkr  # GKR
+    - jolt  # Jolt (zkVM)
+    - twist-shout  # Twist & Shout
+  zkpytorch:  # zkPyTorch
+    - expander  # Expander
+    - gkr  # GKR
+    - mystique  # Mystique
+    - zkcnn  # zkCNN
+    - zkllm  # zkLLM
+  zkgpt:  # zkGPT
+    - gkr  # GKR
+    - jolt  # Jolt (zkVM)
+    - lasso  # Lasso
+    - mystique  # Mystique
+    - zkcnn  # zkCNN
+    - zkllm  # zkLLM
+  zkllm:  # zkLLM
+    - gkr  # GKR
+    - mystique  # Mystique
+    - zkcnn  # zkCNN
+  iron:  # Iron
+    - cheetah  # Cheetah
+    - sirnn  # SIRNN
+    - the-x  # THE-X
+  ciphergpt:  # CipherGPT
+    - bolt  # BOLT
+    - bumblebee  # BumbleBee
+    - cheetah  # Cheetah
+    - iron  # Iron
+    - sirnn  # SIRNN
+  bolt:  # BOLT
+    - cheetah  # Cheetah
+    - iron  # Iron
+    - sirnn  # SIRNN
+    - the-x  # THE-X
+  nimbus:  # Nimbus
+    - bolt  # BOLT
+    - bumblebee  # BumbleBee
+    - cheetah  # Cheetah
+    - ciphergpt  # CipherGPT
+    - iron  # Iron
+    - sirnn  # SIRNN
+    - the-x  # THE-X
+  bootstrapping-fhe:  # Bootstrapping-FHE
+    - bolt  # BOLT
+    - bumblebee  # BumbleBee
+    - cheetah  # Cheetah
+    - ciphergpt  # CipherGPT
+    - iron  # Iron
+    - nimbus  # Nimbus
+    - the-x  # THE-X
+  zkml-survey:  # ZKP-VML Survey
+    - ezkl  # EZKL
+    - gkr  # GKR
+    - lasso  # Lasso
+    - mystique  # Mystique
+    - zkcnn  # zkCNN
+    - zkgpt  # zkGPT
+    - zkllm  # zkLLM
+  modulus-cost-of-intelligence:  # Modulus: Cost of Intelligence
+    - gkr  # GKR
+    - mystique  # Mystique
+    - zkcnn  # zkCNN

@@ -1,8 +1,29 @@
-# zkAI — Zero-Knowledge Proofs for AI
+# zkAI — Verifiable *and* Private AI
 
-A running index of papers and results on proving AI computation in zero knowledge, organized
-by **what is being proven**. Following the taxonomy in the
-[ZKP-VML survey](https://arxiv.org/abs/2502.18535), that splits three ways:
+A running index of papers and results on making AI **trustworthy**, mapped across two axes.
+The "zk" in the name is historical: zero-knowledge proofs are one technique here, not the
+scope. The field is a **2×2** — *what phase* of the model's life you're protecting, and *what
+property* you want — and each cell is served by several different cryptographic (and
+non-cryptographic) approaches.
+
+|  | **Verifiability** — *prove it was done right* (you get a checkable proof) | **Privacy** — *hide the data/model during the computation* (you get confidentiality) |
+|---|---|---|
+| **Inference** | **[Proving inference](#inference)** — zkML: DeepProve, Jolt Atlas, zkPyTorch, zkGPT, zkLLM… | **[Private inference](#secure--private-inference-on-transformers-2pc--mpc--he)** — 2PC/MPC/HE: Iron, BOLT, CipherGPT, Nimbus, FHE bootstrapping |
+| **Training** | **[Proving training](#training)** — zkPoT: Kaizen, zkDL, Optimum Vicinity, ZKBoost… | **[Private training](#training-without-zk-proofs-adjacent-trust-models)** — MPC/HE: PriFT; and verifiable-FL hybrids |
+
+**The technique is not the axis.** A cell can be filled by zero-knowledge proofs, secure
+multi-party computation, homomorphic encryption, trusted hardware (TEEs), optimistic fraud
+proofs, or trace **sampling** — with very different cost/trust trade-offs. Verifiability buys
+you *correctness* (a third party can trust the result) at ~1000× compute; privacy buys you
+*confidentiality from a counterparty* (usually only against a semi-honest one) at the price of
+huge communication or heavy homomorphic compute. **They are different guarantees — most systems
+give one, not both.** See [Alternatives to ZK](#alternatives-to-zero-knowledge) and
+[Sampling](#sampling-based--statistical-verification) for the non-ZK ways to get verifiability,
+and [Private inference](#secure--private-inference-on-transformers-2pc--mpc--he) for the privacy
+line (which does *not* prove correctness at all).
+
+Within the **verifiability** column, the [ZKP-VML survey](https://arxiv.org/abs/2502.18535)
+splits *what is being proven* three ways, and we add a fourth:
 
 | Objective | Claim being proven | Cost |
 |---|---|---|
@@ -14,12 +35,21 @@ by **what is being proven**. Following the taxonomy in the
 The fourth is ours, not the survey's — fairness and audit proofs are a claim about a *model*,
 not about a *computation*, and they don't fit the other three.
 
-Three more sections cover the context those results sit in:
+Cross-cutting context:
 
 - **[Soundness & attacks](#soundness--attacks)** — what breaks, what's merely unanalyzed. Start here if you're auditing.
 - **[Alternatives to ZK](#alternatives-to-zero-knowledge)** — opML, TEEs, and when 1000× overhead isn't worth paying.
 - **[Sampling-based verification](#sampling-based--statistical-verification)** — commit the trace, open a random sample; trade soundness for milliseconds.
-- **[Adjacent trust models](#training-without-zk-proofs-adjacent-trust-models)** — verifiable federated learning and private (MPC/HE) training.
+
+**Papers & citation graph.** The PDFs we've read live in [`references/`](./references/),
+organized by cell (`proving-inference/`, `privacy-inference/`, `surveys/`). A dependency graph
+built by scanning them with `pdftotext` is in
+[`references/citation-graph.svg`](./references/citation-graph.svg) (data in
+[`.yml`](./references/citation-graph.yml)). Its most striking feature: **the proving-inference
+and privacy-inference literatures are citation-disconnected** — the zkML papers cite each other
+plus GKR/Lasso/zkCNN/Jolt; the MPC papers cite each other plus Cheetah/SIRNN/THE-X — with *zero*
+edges crossing between them. Two separate research communities working the two columns of the
+same table.
 
 Structured benchmark data lives in [`papers.yml`](./papers.yml) so it can be plotted. The
 tables below are a human-readable view of the same data.
@@ -77,6 +107,14 @@ unsubstituted `METHOD` placeholder — treat with suspicion.
 | [ZKTorch](https://arxiv.org/abs/2507.07031) | arXiv · Jul 2025 | *(compiler)* | — | up to 6× faster than ZKML | ≥3× smaller | — |
 | [SpaGKR](https://eprint.iacr.org/2024/1018) | ePrint · Jun 2024 | Sparse / ternary nets | — | 45× (sparsity) × ~5× (ternary) | — | — |
 | [ezkl](https://github.com/zkonduit/ezkl) | *(no paper)* | ONNX graphs | — | 237 s on nanoGPT | — | 0.34 s |
+| [SafetyNets](https://arxiv.org/abs/1706.10268) 🔓 | NeurIPS '17 | FcNN-3-Quad (TIMIT) | — | **+5% over plain execution**§ | 8 KB | 8–82× faster than local exec |
+
+🔓 **Not zero-knowledge** — SafetyNets buys *integrity only*; the model and input are not hidden.
+§ The paper reports proving cost as *overhead over unverified execution*, and never states
+absolute prover seconds in text (they appear only in a log-scale plot). That +5% is not
+comparable to any other row here: it is the price of dropping ZK, dropping commitments, and
+restricting the network to quadratic activations. Read it as a **lower bound on what proving
+could cost**, not as a competitor.
 
 ### Notes per system
 
@@ -144,6 +182,33 @@ committed model parameters and input data, which can dominate cost on large mode
 commitment-verification overhead on VGG from 11.5× to 1.1×. Apollo is the KZG/white-box
 variant; Artemis is generic over homomorphic polynomial commitments (black-box), so it works
 in transparent Halo2/IPA settings with no trusted setup.
+
+**[SafetyNets](https://arxiv.org/abs/1706.10268)** — Ghodsi, Gu, Garg (NYU). NeurIPS 2017. **The
+root of the whole GKR-for-ML lineage**, and the oldest system in the survey timeline: SafetyNets
+→ zkCNN → zkLLM / SpaGKR / zkGPT / zkPyTorch → DeepProve. It composes Thaler's time-optimal
+interactive proof for regular arithmetic circuits (a refinement of GKR) over the matmul layers
+with a *new* specialized sum-check for activation layers. Every system above is a descendant of
+the move made here — represent the network as an arithmetic circuit and prove it with sum-check
+instead of a general-purpose SNARK.
+
+Two things make it structurally unlike its descendants, and both are the point of reading it.
+First, it is **genuinely interactive** — the verifier sends live challenges, there is no
+Fiat–Shamir transform, and therefore [the CRYPTO '25 attack](#soundness-and-attacks) that hangs
+over every FS-compiled GKR system below *cannot reach it*. Second, it is **not zero-knowledge**:
+it delivers integrity, not privacy.
+
+What it pays for that is the model class, and the price is steep. Activations must be
+polynomials over 𝔽ₚ, so the network is restricted to **quadratic activations** (`x → x²`)
+everywhere except the output layer — no ReLU, no sigmoid, no softmax except at the end; sum
+pooling, not max pooling. Field growth is the real constraint, since squaring at every layer
+compounds magnitude (hence p = 2⁶¹−1 for MNIST, 2¹²⁷−1 for TIMIT). Read from 2026, essentially
+the entire subsequent literature — lookup arguments, `tlookup`/`zkAttn`, result-as-witness — is
+the story of *removing this one restriction*. Accuracy held up better than you'd expect: 0.63%
+test error on MNIST, 25.7% on TIMIT, competitive with the ReLU baselines.
+
+And the number worth carrying forward: **prover overhead of only ~5%** over unverified
+execution. Nothing in this repo comes remotely close. That gap is the cost of ZK, commitments,
+and general activations — which makes SafetyNets the most useful *floor* in the file.
 
 **[zkCNN](https://eprint.iacr.org/2021/673)** — T. Liu, Xie, Y. Zhang. CCS 2021. The
 foundational sumcheck-for-convolution result: linear prover time for 2D convolution
@@ -378,7 +443,7 @@ by status so that distinction stays sharp.
 
 | Finding | Status | What it touches |
 |---|---|---|
-| [Fiat–Shamir attacks on GKR](https://eprint.iacr.org/2025/118) (CRYPTO '25) | ⚠️ **Proven attack** *(on adversarially-chosen circuits)* | zkGPT, DeepProve, zkPyTorch, zkCNN, zkLLM, SpaGKR, Kaizen |
+| [Fiat–Shamir attacks on GKR](https://eprint.iacr.org/2025/118) (CRYPTO '25) | ⚠️ **Proven attack** *(on adversarially-chosen circuits)* | zkGPT, DeepProve, zkPyTorch, zkCNN, zkLLM, SpaGKR, Kaizen — **but not SafetyNets**, which is interactive |
 | [Halo2 query collision](https://blog.zksecurity.xyz/posts/halo2-query-collision/) | 🐛 **Implementation bug**, fixed | ezkl, ZKML |
 | [ZKBoost](https://eprint.iacr.org/2026/202) fixing prior zkPoT | ⚠️ Claimed vuln in prior work | unidentified zkPoT protocol |
 | [SoK: SNARK vulnerabilities](https://arxiv.org/abs/2402.15293) | 📊 Taxonomy of 141 real bugs | every circuit here |
@@ -409,6 +474,14 @@ prevent. Whether any specific system here satisfies the attack's preconditions *
 analyzed**. That analysis is the highest-value open item in this repo. Note that zkAudit
 already makes the architecture public while hiding only the weights — which is precisely the
 shape of the mitigation.
+
+**The one system in this family the attack cannot reach is the oldest one.**
+[SafetyNets](https://arxiv.org/abs/1706.10268) (2017) is the ancestor of every system in that
+"what it touches" list, and it is *genuinely interactive* — the verifier sends live random
+challenges, so there is no Fiat–Shamir transform to attack. The vulnerability was introduced by
+the very step that made the lineage practical: compiling the interaction away. Worth stating
+plainly, because it sharpens what the attack actually is — not a flaw in sum-check or GKR, but
+a flaw in *removing the verifier*.
 
 ### The rest
 
@@ -731,7 +804,6 @@ Surfaced while compiling this list, not yet read. **No numbers from these are tr
 until someone reads the PDF.** The full backlog with dates is under `to_review:` in
 `papers.yml`; highlights:
 
-- **SafetyNets** (2017.6) — the oldest entry in the survey timeline; interactive proofs, no ZK.
 - **[Kang et al.](https://openreview.net/pdf?id=GjNRF5VTfn)** (2022.10) — scaling up trustless DNN inference.
 - **ezDPS** (2022.12) — proves the whole *data-processing pipeline*, not just the model.
 - **SpaGKR** (2024.6) — sparsity-aware GKR; potentially relevant to MoE models.

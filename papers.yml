@@ -431,6 +431,89 @@ inference:
         proof_size_mb: 0.028
         verification_time_s: 18.7
 
+  - id: safetynets
+    name: SafetyNets
+    title: "SafetyNets: Verifiable Execution of Deep Neural Networks on an Untrusted Cloud"
+    url: https://arxiv.org/abs/1706.10268
+    pdf: https://arxiv.org/pdf/1706.10268
+    venue: NeurIPS 2017
+    date: 2017-06-30
+    year: 2017
+    authors: [Zahra Ghodsi, Tianyu Gu, Siddharth Garg]
+    authors_verified: true
+    proof_system: >-
+      Interactive proof. Thaler's (CRYPTO 2013) time-optimal IP for regular arithmetic circuits
+      -- itself a refinement of GKR -- for the matmul layers, composed with a NEW specialized
+      sum-check for quadratic activation layers. Genuinely interactive: no Fiat-Shamir, no
+      polynomial commitment, no ZK.
+    uses_zk: false
+    hardware: Intel Core i7-4600U @ 2.10 GHz (single machine, both prover and verifier)
+    numbers_source: primary
+    objectives: [inference]
+    quantization:
+      bits: null  # not a bit-width scheme; see `scheme`
+      scheme: >-
+        Scale-and-round to integers in F_p, with separate scaling factors alpha (weights) and
+        beta (inputs); alpha = beta = 16 chosen on validation for MNIST-Back-Rand. Bit width is
+        set indirectly by the choice of Mersenne prime: p = 2^61 - 1 (MNIST tasks), p = 2^127 - 1
+        (TIMIT). Quadratic activations SQUARE the magnitude at every layer, so the field must be
+        large enough to hold the growth -- this is what rules out alpha, beta > 64 at p = 2^61 - 1.
+      accuracy_retention: >-
+        Test error 0.63% (MNIST), 4.67% (MNIST-Back-Rand), 25.7% (TIMIT). The paper's abstract
+        quotes 99.4% / 75.22% accuracy for MNIST / TIMIT; the 75.22% does not quite match the
+        25.7% error in Section 4.2. Networks with quadratic activations were competitive with
+        their ReLU baselines on all three tasks.
+    notes: >-
+      THE ROOT OF THE GKR-FOR-ML LINEAGE. The oldest system in the survey timeline (2017.6), and
+      the direct ancestor of zkcnn -> zkllm / spagkr / zkgpt / zkpytorch / deepprove. Everything
+      those systems do is a descendant of the move made here: represent the network as an
+      arithmetic circuit and prove it with sum-check rather than a general-purpose SNARK.
+
+      Two properties make it structurally different from all its descendants, and both matter:
+      (1) It is INTERACTIVE -- the verifier sends fresh random challenges, so there is no
+      Fiat-Shamir transform. See `fiat-shamir-gkr-attack`: SafetyNets is the one system in this
+      family the attack cannot touch, because the attack is against FS-compiled GKR and there is
+      no FS here. It is deliberately NOT in that paper's `affects:` list.
+      (2) It is NOT zero-knowledge. It buys integrity only -- weights and inputs are not hidden.
+      The paper is explicit that ZK and privacy are future work.
+
+      The cost of the approach is the model class, and it is severe: activations must be
+      polynomials over F_p, so the network is restricted to QUADRATIC activations (x -> x^2)
+      everywhere except the final output layer. No ReLU, no sigmoid, no softmax (except at the
+      output, which the prover simply sends in the clear and the verifier checks against a
+      multilinear extension evaluated at a random point). Sum pooling, not max pooling. No maxout.
+      Essentially the whole subsequent literature -- lookup arguments, tlookup/zkAttn,
+      result-as-witness -- is the story of removing this restriction.
+
+      Prover overhead is the number worth remembering: only ~5% over unverified baseline
+      execution. That is wildly better than any modern zkML system, and it is the price of
+      dropping ZK, dropping commitments, and restricting to quadratic activations. It is a useful
+      lower bound on what proving *could* cost, not a comparable data point.
+    benchmarks:
+      - model: FcNN-3-Quad (TIMIT)
+        # 1845-dim input -> 3 hidden FC layers x 2000 neurons (quadratic) -> 183 outputs (softmax)
+        params: null  # ~12M by our arithmetic, but not stated in the paper -- left null on purpose
+        layers: 4
+        batch_size: 2048
+        proving_time_s: null  # only plotted (Figure 3, log scale), never stated in text
+        prover_overhead_pct: 5.0        # additional prover time over baseline unverified execution
+        verifier_speedup_vs_local_exec: [8, 82]  # range over batch sizes 256..2048; grows with batch
+        proof_size_mb: 0.008            # "< 8 KBytes" at batch 2048; < 2% of input/output bandwidth
+        soundness_error: 2^-130
+      - model: CNN-2-Quad (MNIST / MNIST-Back-Rand)
+        # 2 conv layers, 5x5 filters, stride 1, mapcount 16 then 32; quadratic activations;
+        # 2x2 SUM pooling stride 2; FC output layer with softmax.
+        params: null
+        layers: 3
+        batch_size: 4096
+        client_time_s: 10.0  # "less than 10 seconds"; vs ~600 s for CryptoNets (HE) at same batch.
+        note: >-
+          The CryptoNets comparison is the paper's own, and it is apples-to-oranges by its own
+          admission: CryptoNets buys PRIVACY via homomorphic encryption, SafetyNets buys
+          INTEGRITY. The authors draw the conclusion that integrity is the more practically
+          achievable goal -- a claim that reads very differently in 2026, and is worth revisiting
+          against the privacy-inference cluster (bolt, ciphergpt, iron, nimbus).
+
   - id: zkcnn
     name: zkCNN
     title: "zkCNN: Zero Knowledge Proofs for Convolutional Neural Network Predictions and Accuracy"
@@ -697,6 +780,40 @@ inference:
         proof_size_note: "5.5 KB per layer = 2.1 KB attention + 3.5 KB MLP"
         verification_time_s: 0.024
         baseline_comparison: "vs EZKL: 70x smaller proofs, 5.7x faster proving."
+
+  - id: zip
+    name: ZIP
+    title: "Zero-Knowledge AI Inference with High Precision"
+    url: https://eprint.iacr.org/2025/1732
+    pdf: https://eprint.iacr.org/2025/1732.pdf
+    venue: ACM CCS 2025
+    date: 2025
+    year: 2025
+    authors: [Arman Riasi, Haodi Wang, Rouzbeh Behnia, Viet Vo, Thang Hoang]
+    authors_verified: true
+    affiliation: Virginia Tech / CityU Hong Kong / South Florida / Swinburne
+    proof_system: Commit-and-prove zk-SNARK (model-private, zero-knowledge)
+    numbers_source: primary
+    quantization:
+      bits: null  # deliberately NONE
+      scheme: >-
+        NO quantization. The distinguishing contribution: native IEEE-754 double-precision
+        floating-point inference. Non-linear activations are proven by piecewise-polynomial
+        approximations stored in a lookup table, with a relative-error-driven technique and
+        extra arithmetic constraints hardening the lookup/range proofs against a malicious
+        prover. GeLU needs ~70 table entries; claims 1-3 orders of magnitude smaller activation
+        circuits than prior work, at full precision.
+      accuracy_retention: "full IEEE-754 double precision -- no fixed-point precision loss"
+    notes: >-
+      The counter-philosophy to everyone else here, on the accuracy axis: rather than quantizing
+      the model to fit the prover, ZIP makes the prover handle native floating-point. NOT an LLM
+      prover and NOT a graph point -- evaluated on small models (MNIST, UTKFace faces, SST-2
+      sentiment); SST-2 is text but a tiny classifier, not a generative LLM. Zero-knowledge /
+      model-private like zkLLM. Most useful to this collection as the concrete example that
+      quantization is a choice, not a necessity -- see the "bend the model vs bend the prover"
+      theme (SafetyNets origin; zkGPT relaxations and Jolt teleportation bend the model;
+      DeepProve and ZIP bend the prover).
+    benchmarks: []  # per-model timings not yet extracted; datasets MNIST / UTKFace / SST-2
 
   - id: ezkl
     name: ezkl
@@ -1484,6 +1601,15 @@ soundness_and_attacks:
       - zkllm        # sum-check + tlookup
       - spagkr       # GKR / sumcheck
       - kaizen       # recursive GKR-style proofs (training)
+    not_affected:
+      # Sum-check/GKR-family, but NOT reachable by this attack. Listed explicitly so nobody
+      # "helpfully" adds them to affects_in_this_repo later.
+      - id: safetynets
+        why: >-
+          Genuinely interactive -- the verifier sends live random challenges and there is no
+          Fiat-Shamir transform to attack. The attack is against FS-compiled GKR specifically.
+          SafetyNets is the ancestor of every system in the affects list above and is the only
+          one that predates the compilation step that makes them vulnerable.
     open_question: >-
       In MLaaS the prover IS the model owner, and the model IS the circuit. If a deployment
       commits to WEIGHTS but does not independently pin the ARCHITECTURE, the
@@ -1931,7 +2057,7 @@ surveys:
       a data point in the LLM comparison. Written 2023-01; the 2026 eprint number is recent.
 to_review:
   # Named in the survey's Table VII timeline but not yet pulled:
-  - {title: "SafetyNets: Verifiable Execution of Deep Neural Networks on an Untrusted Cloud", date: 2017-06, category: inference, note: "Oldest entry in the survey timeline; interactive proofs, no ZK."}
+  # SafetyNets (2017.6) was here; read and promoted to `inference:` -- see id: safetynets.
   - {title: "Drynx", date: 2020-03, category: inference, note: "Regression over 600k records: <22s proving, 56kB proof."}
   - {title: "Hydra", date: 2021-12, category: inference}
   - {title: "Kang et al. (Scaling up Trustless DNN Inference)", url: "https://openreview.net/pdf?id=GjNRF5VTfn", date: 2022-10, category: inference}
@@ -1953,3 +2079,7 @@ to_review:
   - {title: "ZKProphet: Understanding Performance of Zero-Knowledge Proofs on GPUs", url: "https://arxiv.org/abs/2509.22684", date: 2025-09, category: infrastructure}
   - {title: "Engineering Trustworthy Machine-Learning Operations with Zero-Knowledge Proofs", url: "https://arxiv.org/abs/2505.20136", date: 2025-05, category: infrastructure}
   - {title: "awesome-zkml (link collection)", url: "https://github.com/worldcoin/awesome-zkml", category: infrastructure}
+  # Found by mining the bibliographies of DeepProve / Jolt Atlas / zkLLM / Modulus (2026-07):
+  - {title: "Zero-Knowledge AI Inference with High Precision", authors: "Arman Riasi, Haodi Wang, Rouzbeh Behnia, Viet Vo, Thang Hoang", venue: "ACM CCS 2025", category: inference, priority: high, note: "Cited by DeepProve [RWB+25]. HIGHEST-PRIORITY follow-up: recent, peer-reviewed, and its 'high precision' angle is the exact accuracy/floating-point axis DeepProve and zkLLM contest. Unknown whether it targets LLMs or general ML -- needs to be pulled and read."}
+  - {title: "An Efficient and Extensible Zero-knowledge Proof Framework for Neural Networks", authors: "Wenjie Qu, Zonghui Wang, Jinye He, Tianyang Tao, Wenzhi Chen, Jiaheng Zhang", venue: "Cryptology ePrint Archive, 2024", category: inference, note: "Cited by DeepProve. Same core authors as zkGPT (Wenjie Qu, Jiaheng Zhang) -- likely zkGPT's general-NN sibling or precursor. Check whether it is distinct from zkGPT before adding as a separate system."}
+  - {title: "Bionetta: Efficient Client-Side Zero-Knowledge Machine Learning Proving", authors: "Dmytro Zakharov et al.", url: "https://arxiv.org/abs/2510.06784", date: 2025, category: inference, note: "Cited by both DeepProve [ea25a] and Jolt Atlas. Groth16/UltraGroth, client-side, EVM on-chain verification; weights hardcoded into the circuit (0-constraint fixed-matrix mul). General ML, NOT LLM-specific, no general ONNX support. Not a graph candidate; track for completeness."}
