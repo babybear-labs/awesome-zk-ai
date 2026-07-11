@@ -48,6 +48,14 @@ citations:
     - zkllm
     - zkpytorch
     - zktorch
+  # proof-of-quality cites the systems it positions itself AGAINST -- it is the outcome-based
+  # dissenter, so its citations point at the computation-verifying approaches it rejects.
+  # Verified against its bibliography, 2026-07-11.
+  proof-of-quality:
+    - opml         # "Conway, K., So, C., Yu, X., & Wong, K. (2024). opml: Optimistic machine learning on blockchain"
+    - mystique     # "Weng, C., Yang, K., Xie, X., Katz, J., & Wang, X. (2021). Mystique: Efficient conversions..."
+    - zkml-kang    # discusses "ZKML" throughout as the proof-based baseline it is arguing against
+    - ezkl         # named as the practical zkML toolchain
   garg-fp:
     - archer-ieee
     - mystique
