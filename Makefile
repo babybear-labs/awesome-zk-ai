@@ -14,6 +14,12 @@ check:
 serve:
 	@python3 site/build.py --serve
 
+## regenerate the social card PNG from its SVG source (needs librsvg: brew install librsvg)
+## Run this after the corpus counts change -- `make check` warns when the card is stale.
+og:
+	@rsvg-convert -w 1200 -h 630 site/static/og.svg -o site/static/og.png
+	@echo "wrote site/static/og.png"
+
 ## re-extract the citation graph by scanning the PDFs in references/
 graph:
 	@python3 site/citegraph.py

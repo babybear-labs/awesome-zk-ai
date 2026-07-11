@@ -423,6 +423,22 @@ excluding a paper you dislike is how a survey starts lying. But do not build on 
 
 ---
 
+## The trajectory
+
+Put the lineages on one axis — time — and hold the model roughly constant, and the shape of the
+last two years is unmistakable.
+
+{{ chart:timeline }}
+
+Read that with the rest of this page in mind, because the curve is not as clean as it looks. It
+is a log scale, so each gridline is a factor of ten. Some of the drop is genuine protocol
+progress; some of it is hardware; some of it is a system proving a *weaker claim* than the one
+above it and being plotted next to it anyway. The point of the chart is not the slope — it is
+that the slope is steep enough that **the interesting question is no longer "is this fast enough
+yet" but "is this proving what you think it is."**
+
+---
+
 ## What the comparison actually shows
 
 Three things fall out of reading them side by side.

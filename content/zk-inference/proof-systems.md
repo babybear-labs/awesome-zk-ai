@@ -35,6 +35,54 @@ half do I make cheap, and how much do I pay on the other half?*
 | [[hao-et-al]] | Digit decomposition, for non-linear operators only | — |
 | [[nanozk]] | Layerwise proofs, constant size per layer | — |
 
+## Not a circuit, and not a zkVM
+
+Before the primitives, a categorical point that trips up almost everyone — including us, until
+we read the code. There are three ways to prove a model, and the systems in the table above are
+mostly the *third*:
+
+1. **Circuit compilers** — [[ezkl]], [[zkml-kang]], and [[zkpytorch]] (via Expander). The model
+   is lowered to an explicit arithmetic constraint system (R1CS / PLONKish gates), and a
+   general-purpose SNARK proves that system was satisfied. The model *becomes* a circuit.
+2. **zkVMs** — the base [Jolt](https://github.com/a16z/jolt), RISC Zero, SP1. You compile a
+   *program* to machine code and prove the CPU executed each instruction. There is an
+   instruction set, a trace, a program counter.
+3. **Direct sum-check over the tensor graph** — [[deepprove]], [[jolt-atlas]], [[zkcnn]],
+   [[zkllm]]. **No circuit artifact and no VM.** The ONNX model becomes a DAG of tensor-operator
+   nodes, and each node gets a *bespoke* sum-check + lookup protocol proved directly against the
+   multilinear polynomials of the tensors.
+
+The confusing name is [[jolt-atlas]]: it borrows Jolt's *lookup argument* (Lasso/Shout,
+prefix-suffix table decomposition) but throws away the CPU/instruction layer, re-pointing that
+machinery at ONNX tensor operators. So it is category 3, not a zkVM — the vestigial `And/Or/Xor`
+instruction tables in its `LookupTables` enum are the only fingerprint of where it came from.
+
+**"No circuit" is a claim worth stating precisely, because it is partly false.** Everything here
+is arithmetized — a sum-check relation *is* a constraint, and GKR is literally a protocol for
+proving a layered arithmetic circuit. What category 3 avoids is narrower: no single *committed*
+constraint system with a full witness assignment. Intermediate tensors are **virtual** — reduced
+away by sum-check, never committed — so only the model weights and small lookup addresses are
+committed, and proof size does not scale with the number of activations. That is the property
+people mean by "no circuit." (The lone exception: [[jolt-atlas]]'s ZK layer, BlindFold, *does*
+use R1CS — to encode the sum-check verifier, not the ML computation.)
+
+## Where the setup lives (an orthogonal axis)
+
+Whether a system is circuit-like and whether it needs a **trusted setup** are independent
+questions — a distinction STARKs make vivid, being *transparent* (FRI, just a hash) yet very
+much circuit-based (AIR). So do not read "modern sum-check system" as "no setup":
+
+- **Trusted (universal SRS).** [[jolt-atlas]] commits by default with **HyperKZG over BN254** — a
+  pairing/KZG scheme that needs a powers-of-tau ceremony and a per-run `setup_prover`
+  preprocessing step (~1 s for GPT-2). [[zen]] and [[vcnn]] (Groth16) need a *circuit-specific*
+  trusted setup, stronger still.
+- **Transparent (no toxic waste).** [[zkgpt]]'s Hyrax, Dory (which the base Jolt used, and Jolt
+  Atlas offers as an option), FRI/STARK, IPA. [[deepprove]]'s BaseFold is hash-based.
+
+Jolt Atlas is the instructive case: it is *less* circuit-like than a STARK on the first axis, yet
+*has* a trusted setup where a STARK does not — it traded the transparent Dory for pairing-based
+HyperKZG deliberately, to get smaller openings suited to on-chain verification.
+
 ## Sum-check and GKR
 
 **What it is.** Express the layer as a low-degree polynomial identity over the multilinear

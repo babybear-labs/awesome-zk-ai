@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <rect width="1200" height="630" fill="#0a0c0e"/>
+  <rect x="0" y="0" width="1200" height="4" fill="#d99a3f"/>
+  <!-- mark -->
+  <circle cx="72" cy="78" r="5" fill="#d99a3f"/>
+  <text x="90" y="84" font-family="Menlo, monospace" font-size="15" letter-spacing="4" fill="#6f7d86">ZKSECURITY RESEARCH</text>
+  <!-- title -->
+  <text x="70" y="215" font-family="Georgia, serif" font-size="86" fill="#e9e4d9">Verifiable <tspan fill="#d99a3f" font-style="italic">and</tspan> private AI</text>
+  <!-- rule -->
+  <rect x="70" y="258" width="3" height="118" fill="#7a5a26"/>
+  <text x="96" y="292" font-family="Georgia, serif" font-size="27" fill="#a8a89f">A systematization of knowledge. Every number tagged with</text>
+  <text x="96" y="330" font-family="Georgia, serif" font-size="27" fill="#a8a89f">where it came from — and what it is actually claiming.</text>
+  <text x="96" y="368" font-family="Georgia, serif" font-size="27" fill="#a8a89f">zkML · MPC · FHE · TEEs · proofs of training.</text>
+  <!-- stats -->
+  <line x1="70" y1="440" x2="1130" y2="440" stroke="#28323a" stroke-width="1"/>
+  <text x="70"  y="500" font-family="Georgia, serif" font-size="46" fill="#d99a3f">105</text>
+  <text x="70"  y="530" font-family="Menlo, monospace" font-size="14" letter-spacing="3" fill="#6f7d86">PAPERS INDEXED</text>
+  <text x="330" y="500" font-family="Georgia, serif" font-size="46" fill="#d99a3f">29</text>
+  <text x="330" y="530" font-family="Menlo, monospace" font-size="14" letter-spacing="3" fill="#6f7d86">READ &amp; WRITTEN UP</text>
+  <text x="640" y="500" font-family="Georgia, serif" font-size="46" fill="#5fb0b7">0</text>
+  <text x="640" y="530" font-family="Menlo, monospace" font-size="14" letter-spacing="3" fill="#6f7d86">CITATIONS BETWEEN THE</text>
+  <text x="640" y="552" font-family="Menlo, monospace" font-size="14" letter-spacing="3" fill="#6f7d86">TWO LITERATURES</text>
+</svg>

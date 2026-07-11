@@ -32,10 +32,23 @@ def warn(m):
 
 
 def load(p, default=None):
+    """Parse YAML, failing with a message a human can act on rather than a traceback.
+    The commonest break in this repo is a ': ' inside an unquoted prose scalar."""
     if not p.exists():
         return default
-    with p.open() as f:
-        return yaml.safe_load(f) or default
+    try:
+        with p.open() as f:
+            return yaml.safe_load(f) or default
+    except yaml.YAMLError as exc:
+        mark = getattr(exc, "problem_mark", None)
+        loc = f"{p.name}:{mark.line + 1}" if mark else p.name
+        src = p.read_text().splitlines()
+        line = f"\n\n    {src[mark.line].strip()}\n" if mark and mark.line < len(src) else ""
+        sys.exit(
+            f"\n{loc}: {getattr(exc, 'problem', exc)}{line}\n"
+            "  A plain YAML scalar cannot contain ': ' -- YAML reads it as a mapping.\n"
+            "  Wrap the value in double quotes, or use ' -- ' instead of ': '.\n"
+        )
 
 
 papers_raw = load(ROOT / "papers.yml", {})
@@ -281,7 +294,30 @@ else:
     print("headline: 0 edges cross between the verifiability and privacy literatures (unchanged)")
 
 # ---------------------------------------------------------------------------
-# 11. no dead internal links in the built site
+# 11. the social card hardcodes corpus counts into an SVG, so it can rot like any other
+#     hardcoded number. The rule that governs prose governs the card: if a figure is
+#     baked in, something has to check it. Otherwise the link preview advertises a
+#     corpus we no longer have.
+# ---------------------------------------------------------------------------
+og = ROOT / "site" / "static" / "og.svg"
+if og.exists():
+    n_papers = len(PAPERS) + sum(
+        1
+        for v in papers_raw.values()
+        if isinstance(v, list)
+        for e in v
+        if isinstance(e, dict) and "id" not in e
+    )
+    claimed = [int(x) for x in re.findall(r'font-size="46"[^>]*>(\d+)<', og.read_text())]
+    if len(claimed) >= 2 and claimed[:2] != [n_papers, len(covered)]:
+        warn(
+            f"site/static/og.svg (the social card) advertises {claimed[0]} papers indexed and "
+            f"{claimed[1]} read, but the corpus now holds {n_papers} and {len(covered)}. "
+            f"Edit the SVG and run `make og`."
+        )
+
+# ---------------------------------------------------------------------------
+# 12. no dead internal links in the built site
 #     (writers type `(./quantization/)`; the build resolves those, but a typo'd slug
 #      would otherwise ship as a 404 that nobody notices)
 # ---------------------------------------------------------------------------

@@ -62,10 +62,19 @@ scheme_meta:
   zkgpt:
     name: zkGPT
     venue: USENIX Security '25
-    indexed: false
-    blurb: Prior state of the art for prover speed (2.75 TPM). Proves a single output token, on a GPT-2
-      stripped of residual connections, attention masks, and the final projection — relaxations that sidestep
-      the outlier problem.
+    indexed: true
+    spine: GKR + Lasso lookups · Hyrax PCS · BN254 · non-interactive (Fiat–Shamir) · zero-knowledge
+    system: 'Result-as-advice non-linear proofs — supply the computed result as a witness, then verify
+      division and square root with a single range relation and exponentiation with a single Lasso lookup.
+      A grouping algorithm makes Thaler''s matmul ~10× faster by shifting the bottleneck from field
+      multiplications to additions. Two systems-level optimizations: constraint fusion (merge adjacent
+      rounding constraints to cut range relations) and circuit squeeze (pack topologically-independent
+      subcircuits into shared layers for parallelism). GKR for arithmetic relations, Lasso for lookups.'
+    blurb: 'The CPU speed record for single-token GPT-2: a proof in <25 s, 101 kB, publicly verifiable
+      offline — 279× over Hao et al. and 185× over ZKML. Proves one forward pass, not multi-token
+      generation, and is genuinely zero-knowledge (Hyrax, hides the weights). DeepProve alleges its
+      evaluated GPT-2 drops residual connections, attention masks, and the final projection; zkGPT''s
+      own paper does not state this.'
   zktorch:
     name: zkTorch
     venue: '2025'
@@ -241,6 +250,18 @@ operators:
   - Per-tensor vs. per-channel scales
   - 'Mixed precision: wider bits for range-mismatched layers'
   schemes:
+    zkgpt:
+      tldr: 16-bit affine quantization inherited from zkCNN — the clearest-documented quantization in the
+        LLM-proving literature, and the one DeepProve measures itself against.
+      bullets:
+      - Affine, per-layer/per-tensor scale and zero-point, all parameters and intermediates as Q-bit
+        integers with q ∈ [0, 65536] (16-bit). It states its bit width, its scheme, and its accuracy cost —
+        the reference point when normalizing everyone else.
+      - The 16-bit choice is on the high end. Lower precision is cheaper on the range-check and lookup side,
+        so part of the gap between zkGPT and, say, DeepProve's 12-bit is quantization, not just protocol.
+      - Fixed scale factors, powers of two — the restriction DeepProve contrasts against (it allows
+        real-valued scales). Combined with the alleged model relaxations, this is the accuracy-versus-speed
+        trade the debate turns on.
     zkllm:
       tldr: Fixed-point discretization into the field via scaling factors, rescaled around each product.
         Documented but not the focus; C4 perplexity moves <0.01 at 13B.
@@ -406,6 +427,18 @@ operators:
   - Operator fusion with the following non-linearity
   - 'Delayed requantization: skip it when the field still has headroom'
   schemes:
+    zkgpt:
+      tldr: Rounding after every rescale is the range-relation bottleneck — and range relations are what
+        zkGPT's whole optimization effort attacks.
+      bullets:
+      - Each quantized product must be rescaled and rounded, and every rounding is a range relation. zkGPT
+        states plainly that range relations are its dominant cost — more expensive than arithmetic
+        relations — so requantization is where the prover time concentrates, as it does for DeepProve (27%).
+      - '**Constraint fusion** is the direct attack: merge adjacent rounding constraints so several rescales
+        share one range relation, cutting the count without changing precision. This is the same idea as
+        DeepProve''s delayed requantization, done at the constraint level rather than the field level.'
+      - Lasso proves the range relations; the rescale itself is a fixed-point multiply-and-shift with the
+        rounded result supplied as advice.
     deepprove:
       tldr: 'The paper describes an explicit two-case (in-range/out-of-range) construction with an InRange
         product. The code has neither: clamping is folded into the Requantise table, and the in/out-of-range
@@ -629,6 +662,18 @@ operators:
   - 'Virtual polynomials: never commit intermediates'
   - Verifying tensor relations directly at the multilinear level (Schwartz–Zippel)
   schemes:
+    zkgpt:
+      tldr: Thaler's matmul sumcheck, made ~10× faster by a grouping algorithm that turns the prover's
+        bottleneck from field multiplications into field additions.
+      bullets:
+      - Thaler's protocol is bottlenecked by building each matrix's bookkeeping table (~4nm field
+        multiplications). zkGPT's grouping algorithm halves that, then exploits two properties of quantized
+        LLM matrices — the padded zeros sumcheck requires, and the small value range from 16-bit
+        quantization — to shift the bottleneck to n·m field *additions*.
+      - Additions are several times cheaper than multiplications, so the net is ~10× on a protocol that
+        was already theoretically optimal. This is the linear-layer half of "prove GPT-2 in <25 s."
+      - Circuit squeeze adds a companion protocol that checks *multiple* matmuls in one sumcheck, so the
+        matmul layers (proven by Thaler's protocol, not GKR) can also be parallelised.
     zkllm:
       tldr: The standard sumcheck for tensor multiplication, GPU-parallelised. The arithmetic backbone
         under Q·Kᵀ, ·V, and the projections.
@@ -1149,6 +1194,18 @@ operators:
   - Tolerant row-sum range check (error_bound), not exact equality
   - Batched lookup + batched sumcheck across heads
   schemes:
+    zkgpt:
+      tldr: Result-as-advice plus a single exponentiation table. The prover supplies the softmax output;
+        each exp is one Lasso lookup, and the division is one range relation.
+      bullets:
+      - The exponentials are proven against one precomputed table of all possible exp results — a single
+        Lasso query per exponentiation, no simulation of $e^x$ in the field.
+      - The normalizing division is result-as-advice checked by one range relation. So softmax reduces to
+        a batch of exp lookups plus one range check, not a bespoke shift-and-normalise protocol like zkLLM's
+        zkAttn or DeepProve's log-sum-exp shift.
+      - Note the model caveat that colours the whole comparison — DeepProve alleges zkGPT's evaluated GPT-2
+        omits the causal attention mask (which zkGPT's paper does not state). If so, the softmax being
+        proven is over unmasked scores.
     zkllm:
       tldr: zkAttn — the softmax proof DeepProve inherits. Shift each row so exp sums to 1, then decompose
         into base-b digits and run one tlookup per digit.
@@ -1401,6 +1458,20 @@ operators:
   - Adapted requantization instead of an inverse-sqrt lookup
   - 'Or: a direct Rsqrt lookup table'
   schemes:
+    zkgpt:
+      tldr: The flagship of constraint fusion. Where prior work spends three range relations proving a
+        normalization, zkGPT algebraically merges them into one.
+      bullets:
+      - Same starting move as DeepProve — the square root and reciprocal are proven by result-as-advice,
+        supplying qσ as a witness and checking it with a single range relation instead of an arithmetic
+        square root. This alone turns Hao et al.'s >4000 s of norm proving into <30 s.
+      - '**Constraint fusion** goes further. Proving σ naively needs three rounded quantities (mean, then
+        variance, then √), each costing a range relation. zkGPT substitutes the mean and variance analytically
+        into the final constraint, collapsing to one range relation: $n(2q_\sigma-1)^2 \le \sum_i(nq_{x_i}-\sum_j
+        q_{x_j})^2 < n(2q_\sigma+1)^2$.'
+      - Range relations are zkGPT's stated bottleneck (costlier than arithmetic relations), and fusion
+        preserves the original precision, so this is pure win. Automatic rules pick the optimal merge per
+        layer.
     deepprove:
       tldr: Never prove a square root. Guess the inverse norm, multiply by it, and prove the result is
         normalized.
@@ -1576,6 +1647,16 @@ operators:
   - 'Prefix-suffix decomposition: 2^{Cb} entries → O(C·2^b)'
   - 'Neural teleportation: shrink the input domain σ(x/τ)'
   schemes:
+    zkgpt:
+      tldr: GeLU is exp and division, so it is result-as-advice — a Lasso exp lookup plus range relations,
+        with no polynomial approximation.
+      bullets:
+      - 'GeLU decomposes into the ZKP-unfriendly trio (division, square root, exponentiation) that zkGPT
+        handles uniformly: supply the result as advice, verify exp with a Lasso table and div/sqrt with a
+        single range relation each.'
+      - Contrast the philosophies. zkGPT proves the exact activation via advice + lookup; Jolt Atlas shrinks
+        the table with lossy teleportation; DeepProve fuses the activation table into the preceding
+        requantization. Same wall (a table must be addressable), three different moves.
     zkllm:
       tldr: 'Activations are tlookups. GeLU, ReLU, SwiGLU: build a two-column table (x, f(x)) and prove
         the input-output pairs lie in it with one tlookup.'
@@ -2021,8 +2102,21 @@ operators:
   - Nova-style folding with a random satisfying instance
   - Zero-knowledge sumcheck (Chiesa–Forbes–Spooner)
   schemes:
+    zkgpt:
+      tldr: Zero-knowledge and non-interactive — Hyrax commitments hide the weights, and Fiat–Shamir makes
+        the proof a downloadable 101 kB object anyone can check offline.
+      bullets:
+      - Like zkLLM, zkGPT is genuinely zero-knowledge (Hyrax over BN254 hides the model parameters) — the
+        motivating threat model is a regulator who anonymously queries a provider and demands a proof
+        without seeing the trade-secret weights.
+      - "Its distinguishing property here is being **non-interactive**: the Fiat–Shamir transform turns
+        the GKR + Lasso protocol into a 101 kB proof that is publicly verifiable offline. This is the
+        sharp contrast with the VOLE systems (Mystique, Hao et al.), which are interactive and
+        designated-verifier and move gigabytes of transcript."
+      - So among the indexed sum-check systems, DeepProve is not ZK, Jolt Atlas bolts it on with BlindFold,
+        and zkLLM and zkGPT get it for free from Hyrax — with zkGPT additionally publicly verifiable.
     zkllm:
-      tldr: The one indexed system that is zero-knowledge by construction. Hyrax commitments hide the
+      tldr: Zero-knowledge by construction. Hyrax commitments hide the
         weights; a zk-sumcheck hides the transcript. This is zkLLM's whole motivation — the weights are
         the prover's IP.
       quotes:
@@ -2346,6 +2440,18 @@ operators:
   - Random-linear-combination batching of many claims into one
   - Deferred claims, opened later by the PCS
   schemes:
+    zkgpt:
+      tldr: GKR for the arithmetic relations, Lasso for the lookups — and circuit squeeze, an optimization
+        aimed squarely at the parallelism GKR + Fiat–Shamir normally loses.
+      bullets:
+      - Arithmetic relations are proven by GKR (ML-friendly, layer-by-layer sumcheck); range and exp
+        relations by Lasso. The advice design keeps the arithmetic circuit shallow.
+      - '**Circuit squeeze.** GKR under Fiat–Shamir parallelises poorly — each layer''s sumcheck is small,
+        and FS forces synchronization per layer, so threads idle. zkGPT''s insight: because results are
+        supplied as advice, the subcircuits checking different constraints have no topological dependence,
+        so they can be *squeezed into the same layers* — fewer, wider layers, more parallelism.'
+      - "Matmuls (proven by Thaler's protocol, not GKR) get a companion protocol that batches several
+        into one sumcheck, so they parallelise too. Net effect: GPT-2 in <25 s on a 16-core CPU."
     zkllm:
       tldr: The base protocol, GPU-first. zkLLM's contribution is making sumcheck-based lookups (tlookup)
         and attention (zkAttn) fully parallel, and adding a zero-knowledge variant.
@@ -2422,6 +2528,19 @@ operators:
   - Multiplicities Mᵢ = count(lookups)/count(table rows), by field inverse
   - 'Decomposable tables: split a wide value into k-bit chunks'
   schemes:
+    zkgpt:
+      tldr: A different lookup family — Lasso, not LogUp. zkGPT uses Lasso for both its range relations
+        and its exponentiation table, which is what makes result-as-advice cheap.
+      bullets:
+      - Where DeepProve/zkLLM use LogUp (a fractional-sum identity), zkGPT uses **Lasso**. Its range-check
+        table is structured (satisfies Lasso's structured-table requirement); its exponentiation table is
+        small and unstructured, which Lasso still handles well.
+      - This is the engine behind result-as-advice — the prover supplies a division/sqrt/exp result as a
+        witness, and the check is a single Lasso range lookup or exp lookup rather than an arithmetic
+        simulation of the operation.
+      # Quoted deliberately: a plain YAML scalar may not contain ": ", and this one does.
+      - "So all three indexed sum-check systems reach non-linearity through lookups, but by three
+        different arguments: LogUp-GKR (DeepProve), tlookup (zkLLM), Lasso (zkGPT)."
     zkllm:
       tldr: tlookup — the lookup argument DeepProve's descends from. Same LogUp identity, but run as one
         parallel sumcheck instead of a GKR tree, so it maps onto a GPU.

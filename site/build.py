@@ -45,10 +45,31 @@ VENDOR_SRC = SITE / "vendor"  # KaTeX. Source, not output -- copied into docs/ o
 
 
 def load_yaml(p: Path, default=None):
+    """Parse a YAML file, and fail with a message a human can act on.
+
+    Most of this repo's YAML is hand-written prose, and the commonest way to break it is a
+    colon-space inside an unquoted scalar ("...three different arguments: LogUp-GKR..."),
+    which YAML reads as a mapping. pyyaml's raw traceback buries that; this surfaces the
+    offending line and tells you the fix.
+    """
     if not p.exists():
         return default
-    with p.open() as f:
-        return yaml.safe_load(f) or default
+    try:
+        with p.open() as f:
+            return yaml.safe_load(f) or default
+    except yaml.YAMLError as exc:
+        mark = getattr(exc, "problem_mark", None)
+        loc = f"{p.relative_to(ROOT)}:{mark.line + 1}" if mark else str(p.relative_to(ROOT))
+        line = ""
+        if mark:
+            src = p.read_text().splitlines()
+            if mark.line < len(src):
+                line = f"\n\n    {src[mark.line].strip()}\n"
+        sys.exit(
+            f"\n{loc}: {getattr(exc, 'problem', exc)}{line}\n"
+            "  A plain YAML scalar cannot contain ': ' -- YAML reads it as a mapping.\n"
+            "  Wrap the value in double quotes, or use ' -- ' instead of ': '.\n"
+        )
 
 
 @dataclass
@@ -270,6 +291,26 @@ def load_content():
 E = html.escape
 
 
+def num(v, lo: bool = False):
+    """Coerce a papers.yml value to a float, or None.
+
+    Values are not always scalars: a paper that reports a range gets `[147, 4710]` in the
+    YAML, because recording a midpoint would be inventing a measurement nobody made. Charts
+    that need a single point take the low end (`lo=True`) -- the most charitable reading of
+    the system being plotted -- rather than silently crashing or silently averaging.
+    """
+    if isinstance(v, bool) or v is None:
+        return None
+    if isinstance(v, (int, float)):
+        return float(v)
+    if isinstance(v, (list, tuple)) and v:
+        vals = [x for x in v if isinstance(x, (int, float)) and not isinstance(x, bool)]
+        if not vals:
+            return None
+        return float(min(vals)) if lo else float(vals[0])
+    return None
+
+
 def fmt_params(n):
     if n is None:
         return "—"
@@ -428,7 +469,15 @@ def stash_shortcodes(text: str, ctx: Ctx) -> str:
         ctx.codes.append(out)
         return f"SHORTCODETOKEN{len(ctx.codes)-1}ZZ"
 
-    return SHORTCODE_RE.sub(sub, text)
+    # Fenced code is literal. A BibTeX block contains `author = {{zkSecurity}}`, which is not
+    # a shortcode -- it is the text we are trying to show the reader.
+    out, last = [], 0
+    for fence in FENCE_RE.finditer(text):
+        out.append(SHORTCODE_RE.sub(sub, text[last:fence.start()]))
+        out.append(fence.group(0))
+        last = fence.end()
+    out.append(SHORTCODE_RE.sub(sub, text[last:]))
+    return "".join(out)
 
 
 MD = md_lib.Markdown(
@@ -663,13 +712,13 @@ def sc_chart_throughput(ctx: Ctx) -> str:
         for b in p.data.get("benchmarks") or []:
             if not isinstance(b, dict):
                 continue
-            n, t = b.get("params"), b.get("tokens_per_minute")
+            n, t = num(b.get("params")), num(b.get("tokens_per_minute"), lo=True)
             if not n or not t:
                 continue
             label = str(b.get("model") or p.name)
             pts.append(
                 dict(
-                    id=p.id, name=p.name, model=label, n=float(n), t=float(t), fam=fam,
+                    id=p.id, name=p.name, model=label, n=n, t=t, fam=fam,
                     kind=b.get("claim_kind") or p.data.get("claim_kind") or "",
                     prov=p.provenance, url=p.url,
                 )
@@ -759,20 +808,35 @@ def sc_chart_timeline(ctx: Ctx) -> str:
         for b in p.data.get("benchmarks") or []:
             if not isinstance(b, dict):
                 continue
-            n = b.get("params")
-            if not n or float(n) > 2e8:  # GPT-2 class only, so we compare like with like
+            # GPT-2 ONLY -- matched by model name, not by a parameter-count proxy.
+            # A "< 200M params" filter silently admits VGG-16 and ResNet-101, and then the
+            # caption's promise of a like-for-like comparison is a lie. If we are going to
+            # hold the model constant, hold the model constant.
+            model = str(b.get("model") or "")
+            if "gpt-2" not in model.lower().replace("gpt2", "gpt-2"):
                 continue
-            secs = b.get("proving_time_s")
-            if secs is None and b.get("tokens_per_minute"):
-                secs = 60.0 / float(b["tokens_per_minute"])
+            n = num(b.get("params"))
+            if not n:
+                continue
+            # A paper may report a RANGE (e.g. [147, 4710]). Plotting its midpoint would
+            # invent a measurement nobody made, so take the low end and say so in the caption.
+            secs = num(b.get("proving_time_s"), lo=True)
+            tpm = num(b.get("tokens_per_minute"))
+            if secs is None and tpm:
+                secs = 60.0 / tpm
             if not secs:
                 continue
+            # Two rows from one system (e.g. DeepProve single vs distributed) are distinct
+            # points, so they need distinct labels or they overplot into an unreadable smudge.
+            extra = re.sub(r"^GPT-?2\s*", "", model, flags=re.I).strip(" ()")
+            label = f"{p.name} · {extra}" if extra else p.name
             pts.append(
-                dict(id=p.id, name=p.name, date=str(d), s=float(secs), fam=guess_family(p),
-                     prov=p.provenance, url=p.url, model=b.get("model") or "")
+                dict(id=p.id, name=label, date=str(d), s=secs, fam=guess_family(p),
+                     prov=p.provenance, url=p.url, model=model,
+                     kind=b.get("claim_kind") or p.data.get("claim_kind") or "")
             )
     if len(pts) < 2:
-        return '<div class="banner stub">not enough dated GPT-2-class data points yet</div>'
+        return '<div class="banner stub">not enough dated GPT-2 data points yet</div>'
 
     def ord_(ds):
         y, m, dd = (list(map(int, ds.split("-"))) + [1, 1])[:3]
@@ -814,12 +878,26 @@ def sc_chart_timeline(ctx: Ctx) -> str:
             f'<text class="dlabel" x="{cx+11:.1f}" y="{cy+4:.1f}">{E(p["name"])}</text></a></g>'
         )
     g.append("</svg>")
+    kinds = {p["kind"] for p in pts}
+    caveat = ""
+    if len(kinds) > 1:
+        caveat = (
+            " <strong>The points are not making the same claim.</strong> This chart holds the "
+            "<em>model</em> constant, not the <em>statement</em> — it mixes "
+            + ", ".join(CLAIM.get(k, "an unstated claim") for k in sorted(kinds))
+            + '. That is the confounder <a href="'
+            + ctx.link("zk-inference/what-is-proven.html")
+            + '">the next page</a> is about, and it does not vanish just because the x-axis is time.'
+        )
     return (
         '<div class="viz">' + "".join(g) + "</div>"
-        '<p style="font-size:13px;color:#6f7d86;margin-top:10px">GPT-2-class models only, so the '
-        "curve is not confounded by model size. Log y-axis: each gridline is 10×. Points derived "
-        "from <code>proving_time_s</code>, or from <code>60 / tokens_per_minute</code> where the "
-        "paper reports only throughput.</p>"
+        '<p style="font-size:13px;color:#6f7d86;margin-top:10px">'
+        "<strong>GPT-2 only</strong> — matched on the model name, not on a parameter-count proxy, "
+        "so the curve is not confounded by model size. Log y-axis: each gridline is 10×. Points "
+        "come from <code>proving_time_s</code>, or from <code>60 / tokens_per_minute</code> where "
+        "the paper reports only throughput; a reported range is plotted at its low end."
+        + caveat
+        + "</p>"
     )
 
 
@@ -944,6 +1022,18 @@ SHELL = """<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{title}</title>
 <meta name="description" content="{desc}">
+<link rel="canonical" href="{base}{url}">
+<link rel="icon" type="image/svg+xml" href="{root}favicon.svg">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="zkAI — zkSecurity Research">
+<meta property="og:title" content="{title}">
+<meta property="og:description" content="{desc}">
+<meta property="og:url" content="{base}{url}">
+<meta property="og:image" content="{base}og.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="{title}">
+<meta name="twitter:description" content="{desc}">
+<meta name="twitter:image" content="{base}og.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;0,6..72,500;1,6..72,300&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
@@ -964,7 +1054,17 @@ SHELL = """<!DOCTYPE html>
     </div>
     <nav id="nav">{nav}</nav>
   </aside>
-  <main><div class="page">{body}</div></main>
+  <main><div class="page">{body}
+    <footer class="foot">
+      <div>
+        <b>zkAI</b> — a systematization of knowledge from
+        <a href="https://zksecurity.xyz">zkSecurity</a>. Generated from
+        <code>papers.yml</code> + <code>content/</code>; every figure carries its provenance.
+        <a href="{root}cite.html">How to cite</a>.
+      </div>
+      <div class="stamp">{stamp}</div>
+    </footer>
+  </div></main>
 </div>
 <script src="{root}vendor/katex/katex.min.js"></script>
 <script src="{root}vendor/katex/contrib/auto-render.min.js"></script>
@@ -1037,13 +1137,39 @@ def build_nav(cur_url: str) -> str:
 
 WRITTEN: list[str] = []
 
+# Public URL. Used for canonical links and OpenGraph, which must be absolute -- a relative
+# og:image is ignored by every crawler, so a social card with a relative path is a silently
+# broken social card.
+BASE_URL = "https://mimoo.github.io/awesome-zk-ai/"
+
+
+def build_stamp() -> str:
+    """Footer line. A SoK with no visible recency signal reads as abandoned -- and the
+    coverage numbers are the honest ones: how much have we actually read?"""
+    from datetime import date
+
+    n_pdf = len({p.stem for p in (ROOT / "references").rglob("*.pdf")})
+    return (
+        f"Last built {date.today().isoformat()} · {len(PAPERS)} papers indexed · "
+        f"{n_pdf} PDFs held · {len(PAPER_NOTES)} read and written up"
+    )
+
 
 def emit(url: str, title: str, desc: str, body: str):
     p = DOCS / url
     p.parent.mkdir(parents=True, exist_ok=True)
     root = "../" * url.count("/")
     p.write_text(
-        SHELL.format(title=E(title), desc=E(desc[:200]), root=root, nav=build_nav(url), body=body)
+        SHELL.format(
+            title=E(title),
+            desc=E(" ".join(desc.split())[:200]),
+            root=root,
+            base=BASE_URL,
+            url=url if url != "index.html" else "",
+            stamp=E(build_stamp()),
+            nav=build_nav(url),
+            body=body,
+        )
     )
     WRITTEN.append(url)
 
@@ -1800,11 +1926,32 @@ def main():
     render_papers_index()
     render_graph()
 
-    WRITTEN.extend(["style.css", ".nojekyll", "graph/citation-graph.dot"])
+    # static assets: favicon + the social card
+    static = SITE / "static"
+    if static.exists():
+        for f in static.iterdir():
+            if f.is_file():
+                shutil.copy(f, DOCS / f.name)
+                WRITTEN.append(f.name)
+
+    # sitemap + robots, so the thing is actually findable
+    pages = sorted(u for u in WRITTEN if u.endswith(".html"))
+    urls = "".join(
+        f"  <url><loc>{BASE_URL}{'' if u == 'index.html' else u}</loc></url>\n" for u in pages
+    )
+    (DOCS / "sitemap.xml").write_text(
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' + urls + "</urlset>\n"
+    )
+    (DOCS / "robots.txt").write_text(f"User-agent: *\nAllow: /\nSitemap: {BASE_URL}sitemap.xml\n")
+
+    WRITTEN.extend(
+        ["style.css", ".nojekyll", "graph/citation-graph.dot", "sitemap.xml", "robots.txt"]
+    )
     (DOCS / MANIFEST).write_text("\n".join(sorted(set(WRITTEN))) + "\n")
     report_strays()
 
-    print(f"built {len(WRITTEN)} files -> docs/")
+    print(f"built {len(WRITTEN)} files -> docs/ ({len(pages)} pages)")
     if WARNINGS:
         print(f"\n{len(WARNINGS)} warning(s):")
         for w in dict.fromkeys(WARNINGS):
